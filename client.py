@@ -1,0 +1,134 @@
+import discord
+from discord import Embed, Interaction
+from discord.ext import commands, tasks
+from discord import app_commands
+from typing import Optional
+from datetime import datetime, timedelta
+import os
+import asyncio
+
+from utils.config import config
+from utils.logging_config import get_logger
+from utils.api_client import api_client
+
+logger = get_logger(__name__)
+
+
+class ERClient(commands.Bot):
+    def __init__(self, intents: discord.Intents = None):
+        if intents is None:
+            intents = discord.Intents.default()
+            intents.message_content = True
+            intents.members = True
+            intents.presences = False
+
+        super().__init__(command_prefix="!", intents=intents)
+
+        # data 디렉토리 생성
+        os.makedirs("data", exist_ok=True)
+
+        self.api_client = api_client
+        self.start_time = None  # main.py에서 설정됨
+        self.cogs_ready = asyncio.Event()
+
+    @property
+    def uptime(self) -> Optional[timedelta]:
+        """봇의 업타임을 반환합니다."""
+        if self.start_time is None:
+            return None
+        return datetime.now() - self.start_time
+
+    async def get_user_nickname(self, nickname: str) -> Optional[str]:
+        """닉네임으로 유저 UID를 조회합니다."""
+        try:
+            url = f"{config.api_url}/user/nickname"
+            response = await self.api_client.get(url, params={'query': nickname})
+
+            if response and response.get('code') == 200:
+                user_data = response.get('user')
+                if user_data:
+                    # API 문서와 실제 응답의 필드명 차이 대응
+                    for field in ('userNum', 'userId', 'uid'):
+                        if field in user_data:
+                            return user_data[field]
+            return None
+        except Exception as e:
+            logger.warning(f"닉네임 조회 중 오류 ({nickname}): {e}")
+            return None
+
+    async def setup_hook(self) -> None:
+        try:
+            for module in [
+                "commands.season",
+                "commands.concurrent",
+                "commands.playtime",
+                "commands.dog",
+                "commands.cat",
+                "commands.ranking",
+                "commands.settings",
+                "commands.info",
+                "commands.rank",
+                "commands.rating"
+            ]:
+                await self.load_extension(module)
+
+            await self.tree.sync()
+
+        except Exception:
+            raise
+
+    @tasks.loop(minutes=30.0)
+    async def change_status(self):
+        """30분마다 봇의 상태를 업데이트합니다."""
+        try:
+            await self.change_presence(activity=discord.Game(name=f"{len(self.guilds)}개의 서버에서 일"))
+        except Exception as e:
+            logger.debug(f"상태 업데이트 중 오류 (무시됨): {e}")
+
+    @change_status.before_loop
+    async def before_change_status(self):
+        await self.wait_until_ready()
+
+    async def on_disconnect(self):
+        """봇이 연결이 끊어졌을 때 호출됩니다."""
+        logger.warning("봇 연결이 끊어졌습니다.")
+
+    async def on_resumed(self):
+        """봇이 재연결되었을 때 호출됩니다."""
+        logger.info("봇이 재연결되었습니다.")
+
+    async def on_guild_join(self, guild):
+        """봇이 새 서버에 참가했을 때 호출됩니다."""
+        logger.info(f"서버 참가: {guild.name} (ID: {guild.id}, 멤버: {guild.member_count})")
+
+    async def on_guild_remove(self, guild):
+        """봇이 서버에서 제거되었을 때 호출됩니다."""
+        logger.info(f"서버 제거: {guild.name} (ID: {guild.id})")
+
+    async def on_tree_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        error_message = "명령어 실행 중 오류가 발생했습니다."
+
+        if isinstance(error, app_commands.CheckFailure):
+            error_message = "이 명령어를 실행할 권한이 없습니다."
+        elif isinstance(error, app_commands.CommandOnCooldown):
+            error_message = f"명령어를 너무 자주 사용했습니다. {error.retry_after:.2f}초 후에 다시 시도해주세요."
+
+        logger.error(f"명령어 실행 오류: {error}", exc_info=True)
+
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(error_message, ephemeral=True)
+            else:
+                await interaction.followup.send(error_message, ephemeral=True)
+        except Exception:
+            pass
+
+    async def close(self):
+        """봇 종료 시 리소스를 정리합니다."""
+        try:
+            await self.api_client.close()
+            logger.info("리소스 정리 완료")
+        except Exception as e:
+            logger.error(f"리소스 정리 중 오류: {e}")
+        finally:
+            await super().close()

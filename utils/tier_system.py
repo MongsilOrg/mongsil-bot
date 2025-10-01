@@ -1,0 +1,96 @@
+"""
+티어 시스템 유틸리티 모듈
+"""
+
+
+class TierSystem:
+    """티어 시스템을 관리하는 클래스"""
+
+    # 티어 정보를 담는 클래스 변수
+    TIERS = {
+        "이터니티": {"base": 7800, "icon": "10.이터니티", "special_condition": lambda rank: rank <= 300},
+        "데미갓": {"base": 7800, "icon": "9.데미갓", "special_condition": lambda rank: 300 < rank <= 1000},
+        "미스릴": {"base": 7100, "icon": "8.미스릴"},
+        "메테오라이트": {"base": 6400, "icon": "7.메테오라이트"},
+        "다이아몬드 1": {"base": 6050, "icon": "6.다이아몬드"},
+        "다이아몬드 2": {"base": 5700, "icon": "6.다이아몬드"},
+        "다이아몬드 3": {"base": 5350, "icon": "6.다이아몬드"},
+        "다이아몬드 4": {"base": 5000, "icon": "6.다이아몬드"},
+        "플래티넘 1": {"base": 4650, "icon": "5.플래티넘"},
+        "플래티넘 2": {"base": 4300, "icon": "5.플래티넘"},
+        "플래티넘 3": {"base": 3950, "icon": "5.플래티넘"},
+        "플래티넘 4": {"base": 3600, "icon": "5.플래티넘"},
+        "골드 1": {"base": 3300, "icon": "4.골드"},
+        "골드 2": {"base": 3000, "icon": "4.골드"},
+        "골드 3": {"base": 2700, "icon": "4.골드"},
+        "골드 4": {"base": 2400, "icon": "4.골드"},
+        "실버 1": {"base": 2150, "icon": "3.실버"},
+        "실버 2": {"base": 1900, "icon": "3.실버"},
+        "실버 3": {"base": 1650, "icon": "3.실버"},
+        "실버 4": {"base": 1400, "icon": "3.실버"},
+        "브론즈 1": {"base": 1200, "icon": "2.브론즈"},
+        "브론즈 2": {"base": 1000, "icon": "2.브론즈"},
+        "브론즈 3": {"base": 800, "icon": "2.브론즈"},
+        "브론즈 4": {"base": 600, "icon": "2.브론즈"},
+        "아이언 1": {"base": 450, "icon": "1.아이언"},
+        "아이언 2": {"base": 300, "icon": "1.아이언"},
+        "아이언 3": {"base": 150, "icon": "1.아이언"},
+        "아이언 4": {"base": 0, "icon": "1.아이언"},
+        "언랭크": {"base": 0, "icon": "0.언랭크"}
+    }
+
+    @classmethod
+    def get_tier(cls, mmr: int, rank: int) -> str:
+        """
+        MMR과 순위를 기준으로 티어를 반환합니다.
+
+        Args:
+            mmr: 유저의 MMR
+            rank: 유저의 순위
+
+        Returns:
+            티어 이름 (예: "다이아몬드 1", "이터니티" 등)
+        """
+        if mmr == 0:
+            return "언랭크"
+
+        # 이터니티와 데미갓은 특별한 조건이 있음
+        if mmr >= 7800:
+            if rank <= 300:
+                return "이터니티"
+            elif rank <= 1000:
+                return "데미갓"
+            return "미스릴"
+
+        # 나머지 티어는 MMR만으로 판단
+        for tier, info in cls.TIERS.items():
+            if mmr >= info["base"] and "special_condition" not in info:
+                return tier
+
+        return "언랭크"
+
+    @classmethod
+    def get_tier_icon(cls, tier: str) -> str:
+        """
+        티어에 해당하는 아이콘 파일명을 반환합니다.
+
+        Args:
+            tier: 티어 이름
+
+        Returns:
+            아이콘 파일명 (예: "6.다이아몬드")
+        """
+        return cls.TIERS.get(tier, cls.TIERS["언랭크"])["icon"]
+
+    @classmethod
+    def get_tier_base(cls, tier: str) -> int:
+        """
+        티어의 기준 점수를 반환합니다.
+
+        Args:
+            tier: 티어 이름
+
+        Returns:
+            기준 MMR 점수
+        """
+        return cls.TIERS.get(tier, cls.TIERS["언랭크"])["base"]

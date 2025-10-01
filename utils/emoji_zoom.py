@@ -1,0 +1,268 @@
+"""
+이모지 확대 기능 모듈
+"""
+import discord
+import json
+import asyncio
+from typing import Optional, Set, Dict
+from pathlib import Path
+from datetime import datetime, timedelta
+from utils.logging_config import get_logger
+
+logger = get_logger('이모지확대')
+
+# 설정 파일 경로
+SETTINGS_PATH = Path('./data/settings.json')
+
+# 웹훅 캐시 (채널 ID -> 웹훅)
+_webhook_cache: Dict[int, discord.Webhook] = {}
+_webhook_cache_times: Dict[int, datetime] = {}
+
+# 웹훅 캐시 TTL (24시간) 및 최대 크기
+WEBHOOK_CACHE_TTL = timedelta(hours=24)
+MAX_WEBHOOK_CACHE_SIZE = 500
+
+# 설정 캐시 (성능 최적화)
+_disabled_servers_cache: Optional[Set[int]] = None
+_settings_last_modified: Optional[float] = None
+
+# 웹훅 권한 오류 알림 캐시 (서버별로 한 번만 알림)
+_webhook_permission_notified: Set[int] = set()
+
+# 성능 최적화를 위한 상수
+WEBHOOK_NAME = "몽실봇 이모지 확대"
+EMOJI_CDN_BASE = "https://cdn.discordapp.com/emojis/"
+AVATAR_SIZE = 1024
+
+def load_disabled_servers() -> Set[int]:
+    """이모지 확대 기능이 비활성화된 서버 목록을 로드합니다. (최고 성능 캐시)"""
+    global _disabled_servers_cache, _settings_last_modified
+    
+    # 캐시가 있으면 즉시 반환 (가장 빠름)
+    if _disabled_servers_cache is not None:
+        return _disabled_servers_cache
+    
+    try:
+        if not SETTINGS_PATH.exists():
+            _disabled_servers_cache = set()
+            return _disabled_servers_cache
+        
+        # 파일이 비어있으면 빈 세트 반환
+        if SETTINGS_PATH.stat().st_size == 0:
+            _disabled_servers_cache = set()
+            _settings_last_modified = SETTINGS_PATH.stat().st_mtime
+            return _disabled_servers_cache
+        
+        # 파일 로드 및 캐시 업데이트 (한 번만)
+        with SETTINGS_PATH.open('r', encoding='utf-8') as file:
+            data = json.load(file)
+            _disabled_servers_cache = set(data)
+            _settings_last_modified = SETTINGS_PATH.stat().st_mtime
+            return _disabled_servers_cache
+            
+    except Exception:
+        # 오류 시 빈 세트로 초기화 (로깅 제거로 성능 향상)
+        _disabled_servers_cache = set()
+        return _disabled_servers_cache
+
+def _clean_webhook_cache():
+    """웹훅 캐시 크기를 제한합니다."""
+    if len(_webhook_cache) > MAX_WEBHOOK_CACHE_SIZE:
+        # 가장 오래된 항목 제거
+        oldest_channel = min(_webhook_cache_times.keys(), key=lambda k: _webhook_cache_times[k])
+        _webhook_cache.pop(oldest_channel, None)
+        _webhook_cache_times.pop(oldest_channel, None)
+
+def save_disabled_servers(disabled_servers: Set[int]) -> bool:
+    """비활성화된 서버 목록을 저장합니다."""
+    global _disabled_servers_cache, _settings_last_modified
+    try:
+        with SETTINGS_PATH.open('w', encoding='utf-8') as file:
+            json.dump(list(disabled_servers), file, ensure_ascii=False, indent=2)
+        _disabled_servers_cache = disabled_servers.copy()
+        _settings_last_modified = SETTINGS_PATH.stat().st_mtime
+        return True
+    except Exception as e:
+        logger.error(f"설정 파일 저장 중 오류: {e}")
+        return False
+
+async def disable_emoji_zoom_and_notify(guild_id: int, channel: discord.TextChannel) -> None:
+    """이모지 확대 기능을 비활성화하고 알림을 보냅니다."""
+    global _webhook_permission_notified
+    
+    # 이미 알림을 보낸 서버는 건너뛰기
+    if guild_id in _webhook_permission_notified:
+        return
+    
+    # 서버를 비활성화 목록에 추가
+    disabled_servers = load_disabled_servers()
+    disabled_servers.add(guild_id)
+    save_disabled_servers(disabled_servers)
+    
+    # 알림 캐시에 추가
+    _webhook_permission_notified.add(guild_id)
+    
+    # 안내 메시지 전송
+    try:
+        embed = discord.Embed(
+            title="⚠️ 이모지 확대 기능 비활성화",
+            description="관리자 권한이 없어 이모지 확대 기능을 비활성화했습니다.",
+            color=0xff6b6b
+        )
+        embed.add_field(
+            name="🔧 해결 방법",
+            value="**1단계: 관리자 권한 부여**\n"
+                  "• 서버 설정 → 역할 → 몽실봇 → 권한\n"
+                  "• **관리자** 권한을 활성화\n\n"
+                  "**2단계: 서비스 재활성화**\n"
+                  "• `/설정` 명령어로 다시 활성화 가능",
+            inline=False
+        )
+        embed.add_field(
+            name="📋 필요한 권한",
+            value="**관리자 권한** - 몽실봇 서비스 이용에 필수",
+            inline=False
+        )
+        embed.set_footer(text="몽실봇 • 권한 설정 후 다시 활성화해주세요")
+        
+        await channel.send(embed=embed)
+    except Exception as e:
+        logger.error(f"웹훅 권한 오류 알림 전송 실패: {e}")
+
+async def get_or_create_webhook(channel: discord.TextChannel) -> Optional[discord.Webhook]:
+    """채널의 웹훅을 가져오거나 생성합니다. (초고속)"""
+    channel_id = channel.id
+
+    # 캐시에서 웹훅 확인 및 TTL 체크
+    if channel_id in _webhook_cache:
+        cache_time = _webhook_cache_times.get(channel_id)
+        if cache_time and datetime.now() - cache_time < WEBHOOK_CACHE_TTL:
+            return _webhook_cache[channel_id]
+        else:
+            # TTL 만료 - 캐시에서 제거
+            _webhook_cache.pop(channel_id, None)
+            _webhook_cache_times.pop(channel_id, None)
+
+    try:
+        # 기존 웹훅 찾기 (최적화된 검색)
+        webhooks = await channel.webhooks()
+
+        # 빠른 검색 (첫 번째 매치에서 즉시 반환)
+        for webhook in webhooks:
+            if webhook.name == WEBHOOK_NAME:
+                _webhook_cache[channel_id] = webhook
+                _webhook_cache_times[channel_id] = datetime.now()
+                _clean_webhook_cache()
+                return webhook
+
+        # 웹훅 생성 (최소한의 옵션)
+        webhook = await channel.create_webhook(
+            name=WEBHOOK_NAME,
+            reason="이모지 확대 기능"
+        )
+        _webhook_cache[channel_id] = webhook
+        _webhook_cache_times[channel_id] = datetime.now()
+        _clean_webhook_cache()
+        return webhook
+
+    except discord.Forbidden:
+        # 웹훅 권한이 없는 경우 서버 비활성화 및 알림
+        await disable_emoji_zoom_and_notify(channel.guild.id, channel)
+        return None
+    except discord.NotFound:
+        _webhook_cache.pop(channel_id, None)
+        _webhook_cache_times.pop(channel_id, None)
+        return None
+    except Exception:
+        return None  # 기타 오류 - 조용히 처리
+
+def is_single_custom_emoji(content: str) -> bool:
+    """메시지가 단일 커스텀 이모지인지 확인합니다. (초고속)"""
+    # 초고속 길이 체크 (가장 빠른 필터)
+    length = len(content)
+    if length < 10 or length > 100:
+        return False
+    
+    # Discord 이모지 형식 초고속 체크
+    if content[0] != '<' or content[-1] != '>' or ':' not in content:
+        return False
+    
+    # Discord.py 파싱 (한 번만 실행)
+    try:
+        emoji = discord.PartialEmoji.from_str(content)
+        return emoji is not None
+    except (ValueError, AttributeError):
+        return False
+
+def extract_emoji_info(content: str) -> Optional[tuple[str, str, bool]]:
+    """이모지 정보를 추출합니다. (이름, ID, 애니메이션 여부) - 초고속"""
+    try:
+        emoji = discord.PartialEmoji.from_str(content)
+        if emoji:
+            return emoji.name, str(emoji.id), emoji.animated
+    except (ValueError, AttributeError):
+        pass
+    return None
+
+async def process_emoji_zoom(message: discord.Message) -> None:
+    """이모지 확대 기능을 처리합니다. (최고 성능)"""
+    # 초고속 필터링
+    guild_id = message.guild.id
+    if guild_id in load_disabled_servers():
+        return
+
+    # 이모지 형식 초고속 체크
+    content = message.content
+    length = len(content)
+    if (length < 10 or length > 100 or 
+        content[0] != '<' or content[-1] != '>' or ':' not in content):
+        return
+    
+    # 이모지 정보 추출 (한 번만 파싱)
+    try:
+        emoji = discord.PartialEmoji.from_str(content)
+        if not emoji:
+            return
+    except (ValueError, AttributeError):
+        return
+    
+    # 웹훅 가져오기 (캐시 우선)
+    webhook = await get_or_create_webhook(message.channel)
+    if not webhook:
+        return
+    
+    # 이모지 URL 생성 (원본 화질)
+    emoji_url = f"{EMOJI_CDN_BASE}{emoji.id}.{'gif' if emoji.animated else 'png'}"
+    
+    # 프로필 사진 URL 처리 (1024px, GIF 미지원)
+    avatar_url = str(message.author.display_avatar.replace(size=AVATAR_SIZE, format='png'))
+    
+    # 웹훅 전송 (최고 성능 - 병렬 처리)
+    try:
+        # 메시지 삭제와 웹훅 전송을 동시 실행
+        await asyncio.gather(
+            message.delete(),
+            webhook.send(
+                content=emoji_url,
+                username=message.author.display_name,
+                avatar_url=avatar_url,
+                wait=False
+            ),
+            return_exceptions=True
+        )
+    except discord.Forbidden:
+        pass  # 권한 없음 - 조용히 처리
+    except discord.NotFound:
+        # 웹훅 삭제됨 - 캐시에서 제거
+        _webhook_cache.pop(message.channel.id, None)
+    except Exception:
+        pass  # 기타 오류 - 조용히 처리 (로깅 제거로 성능 향상)
+
+async def cleanup_emoji_zoom_cache():
+    """이모지 확대 관련 캐시를 정리합니다."""
+    global _webhook_cache, _disabled_servers_cache, _settings_last_modified, _webhook_permission_notified
+    _webhook_cache.clear()
+    _disabled_servers_cache = None
+    _settings_last_modified = None
+    _webhook_permission_notified.clear()
+    logger.info("이모지 확대 관련 캐시가 정리되었습니다.")
