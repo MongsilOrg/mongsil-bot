@@ -50,6 +50,10 @@ async def fetch_user_stats_solo(
                     stats.get('matchingTeamMode', 0) == 3):
                     return stats
 
+            # matchingMode 필터가 맞지 않으면 첫 번째 결과 반환 (API 응답 형식 변경 대응)
+            if len(stats_list) == 1:
+                return stats_list[0]
+
             raise NotFoundError("유저 통계 없음", f"유저의 랭크 게임 기록이 없습니다.")
         else:
             error_msg = data.get('message') if data else 'No response'

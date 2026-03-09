@@ -57,7 +57,7 @@ async def get_user_games(client, user_id: str, start_date: datetime.date) -> Lis
 
             data = await client.api_client.get(url, use_cache=True)
             if data:
-                current_games = data.get('userGames', [])
+                current_games = data.get('userGames', data.get('games', []))
                 
                 # 날짜 체크 및 게임 추가
                 for game in current_games:
