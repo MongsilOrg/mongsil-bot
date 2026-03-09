@@ -1,10 +1,9 @@
 import discord
-from discord import Embed, Color
+from discord import Embed
 from discord.ext import commands
 from discord import app_commands
-from typing import Optional, Dict, Any, NamedTuple, Tuple
+from typing import Optional, Dict, Tuple
 from client import ERClient
-import aiohttp
 from commands.season import get_current_season_id, get_season_info
 
 from utils.config import config
@@ -113,50 +112,37 @@ class Rating(commands.Cog):
     @handle_errors(user_message="레이팅 정보를 가져오는 중 오류가 발생했습니다.")
     async def rating_command(self, interaction: discord.Interaction):
         """현재 시즌의 이터니티/데미갓 컷을 확인합니다."""
-        try:
-            await interaction.response.defer()
-            
-            season_id = await get_current_season_id()
-            if not season_id:
-                logger.error("현재 시즌 ID를 가져올 수 없습니다.")
-                error_embed = create_error_embed(
-                    "시즌 정보 오류",
-                    "현재 시즌 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.",
-                    self.client
-                )
-                await interaction.followup.send(embed=error_embed, ephemeral=True)
-                return
+        await interaction.response.defer()
 
-            # 시즌 정보 가져오기
-            season_info = await get_season_info()
-            season_name = season_info.name if season_info else f"시즌 {season_id}"
-
-            # 레이팅 정보 조회 (한 번의 API 호출로 300등과 1000등 모두 가져오기)
-            rank_300, rank_1000 = await fetch_rating_info(self.client, season_id)
-            
-            if not rank_300 and not rank_1000:
-                error_embed = create_error_embed(
-                    "레이팅 정보 없음",
-                    f"{season_name}의 레이팅 정보를 가져올 수 없습니다.\n"
-                    "시즌이 아직 시작되지 않았거나 API에 문제가 있을 수 있습니다.",
-                    self.client
-                )
-                await interaction.followup.send(embed=error_embed, ephemeral=True)
-                return
-
-            embed = create_rating_embed(rank_300, rank_1000, self.client, season_name)
-            await interaction.followup.send(embed=embed)
-        except Exception as e:
-            logger.error(f"레이팅 명령어 실행 중 오류 발생: {e}", exc_info=True)
+        season_id = await get_current_season_id()
+        if not season_id:
             error_embed = create_error_embed(
-                "오류 발생",
-                "레이팅 정보를 가져오는 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.",
+                "시즌 정보 오류",
+                "현재 시즌 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.",
                 self.client
             )
-            if not interaction.response.is_done():
-                await interaction.response.send_message(embed=error_embed, ephemeral=True)
-            else:
-                await interaction.followup.send(embed=error_embed, ephemeral=True)
+            await interaction.followup.send(embed=error_embed, ephemeral=True)
+            return
+
+        # 시즌 정보 가져오기
+        season_info = await get_season_info()
+        season_name = season_info.name if season_info else f"시즌 {season_id}"
+
+        # 레이팅 정보 조회 (한 번의 API 호출로 300등과 1000등 모두 가져오기)
+        rank_300, rank_1000 = await fetch_rating_info(self.client, season_id)
+
+        if not rank_300 and not rank_1000:
+            error_embed = create_error_embed(
+                "레이팅 정보 없음",
+                f"{season_name}의 레이팅 정보를 가져올 수 없습니다.\n"
+                "시즌이 아직 시작되지 않았거나 API에 문제가 있을 수 있습니다.",
+                self.client
+            )
+            await interaction.followup.send(embed=error_embed, ephemeral=True)
+            return
+
+        embed = create_rating_embed(rank_300, rank_1000, self.client, season_name)
+        await interaction.followup.send(embed=embed)
 
 async def setup(client: ERClient):
     """명령어를 등록합니다."""

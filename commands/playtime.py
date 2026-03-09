@@ -289,53 +289,41 @@ class Playtime(commands.Cog):
         닉네임: str
     ):
         """플레이어의 최근 7일 플레이 타임을 조회합니다."""
-        try:
-            # 닉네임 검증
-            validated_nickname = validate_nickname(닉네임)
-            
-            # 로딩 메시지 표시
-            loading_embed = discord.Embed(
-                title=f"{EMOJIS['loading']} 플레이 타임 조회 중...",
-                description=f"`{validated_nickname}`님의 게임 데이터를 분석하고 있습니다.",
+        # 닉네임 검증
+        validated_nickname = validate_nickname(닉네임)
+
+        # 로딩 메시지 표시
+        loading_embed = discord.Embed(
+            title=f"{EMOJIS['loading']} 플레이 타임 조회 중...",
+            description=f"`{validated_nickname}`님의 게임 데이터를 분석하고 있습니다.",
+            color=config.embed_color
+        )
+        await interaction.response.send_message(embed=loading_embed)
+
+        # 플레이 타임 정보 조회
+        stats = await get_playtime_info(self.client, validated_nickname)
+        if not stats:
+            # 데이터가 없는 경우 친화적인 메시지
+            no_data_embed = discord.Embed(
+                title=f"😴 {validated_nickname}님의 플레이 기록",
+                description="최근 7일간 플레이 기록이 없습니다.\n\n💡 **다음과 같은 이유일 수 있습니다:**\n• 최근에 게임을 하지 않았음\n• 닉네임이 정확하지 않음\n• 게임 데이터가 아직 업데이트되지 않음",
                 color=config.embed_color
             )
-            await interaction.response.send_message(embed=loading_embed)
-
-            # 플레이 타임 정보 조회
-            stats = await get_playtime_info(self.client, validated_nickname)
-            if not stats:
-                # 데이터가 없는 경우 친화적인 메시지
-                no_data_embed = discord.Embed(
-                    title=f"😴 {validated_nickname}님의 플레이 기록",
-                    description="최근 7일간 플레이 기록이 없습니다.\n\n💡 **다음과 같은 이유일 수 있습니다:**\n• 최근에 게임을 하지 않았음\n• 닉네임이 정확하지 않음\n• 게임 데이터가 아직 업데이트되지 않음",
-                    color=config.embed_color
-                )
-                no_data_embed.add_field(
-                    name="🔍 **확인 방법**",
-                    value=f"• [DAK.GG](https://dak.gg/er/players/{validated_nickname})에서 닉네임 확인\n• 게임 내에서 최근 플레이 기록 확인",
-                    inline=False
-                )
-                no_data_embed.set_footer(text=f"몽실봇 • {len(self.client.guilds)}개의 서버에서 활동 중")
-                
-                view = PlaytimeView(validated_nickname)
-                await interaction.edit_original_response(embed=no_data_embed, view=view)
-                return
-
-            # 성공적인 결과 표시
-            embed = create_playtime_embed(self.client, validated_nickname, stats)
-            view = PlaytimeView(validated_nickname)
-            await interaction.edit_original_response(embed=embed, view=view)
-            
-        except Exception as e:
-            logger.error(f"플탐 명령어 실행 중 오류: {e}", exc_info=True)
-            error_embed = create_error_embed(
-                "오류 발생",
-                "플레이 타임 정보를 가져오는 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요."
+            no_data_embed.add_field(
+                name="🔍 **확인 방법**",
+                value=f"• [DAK.GG](https://dak.gg/er/players/{validated_nickname})에서 닉네임 확인\n• 게임 내에서 최근 플레이 기록 확인",
+                inline=False
             )
-            try:
-                await interaction.edit_original_response(embed=error_embed)
-            except discord.NotFound:
-                await interaction.followup.send(embed=error_embed, ephemeral=True)
+            no_data_embed.set_footer(text=f"몽실봇 • {len(self.client.guilds)}개의 서버에서 활동 중")
+
+            view = PlaytimeView(validated_nickname)
+            await interaction.edit_original_response(embed=no_data_embed, view=view)
+            return
+
+        # 성공적인 결과 표시
+        embed = create_playtime_embed(self.client, validated_nickname, stats)
+        view = PlaytimeView(validated_nickname)
+        await interaction.edit_original_response(embed=embed, view=view)
 
 async def setup(client: ERClient):
     """명령어를 등록합니다."""

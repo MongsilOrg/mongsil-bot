@@ -66,11 +66,8 @@ class ConcurrentData:
             with open(temp_file_path, 'wb') as f:
                 pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
             
-            # 원자적 파일 이동
-            if os.path.exists(self.file_path):
-                os.replace(temp_file_path, self.file_path)
-            else:
-                os.rename(temp_file_path, self.file_path)
+            # 원자적 파일 이동 (os.replace는 대상 파일 존재 여부와 무관하게 동작)
+            os.replace(temp_file_path, self.file_path)
             
             return True
             
@@ -254,57 +251,42 @@ class Concurrent(commands.Cog):
     @handle_errors(user_message="동시 접속자 수를 가져오는 중 오류가 발생했습니다.")
     async def concurrent_command(self, interaction: discord.Interaction):
         """현재 이터널 리턴의 동시 접속자 수를 확인합니다."""
-        try:
-            await interaction.response.defer()
-            
-            # Steam API 키 확인
-            if not config.steam_api_key:
-                embed = create_error_embed(
-                    "Steam API 키 없음",
-                    "Steam API 키가 설정되지 않아 동시 접속자 수를 조회할 수 없습니다.\n관리자에게 문의해주세요.",
-                    self.client
-                )
-                await interaction.followup.send(embed=embed, ephemeral=True)
-                return
-            
-            count_info = await get_player_count(self.client)
-            
-            if not count_info:
-                embed = create_error_embed(
-                    "데이터 조회 실패",
-                    "현재 동시 접속자 수를 가져올 수 없습니다.\nSteam API 서버에 문제가 있을 수 있습니다.\n잠시 후 다시 시도해주세요.",
-                    self.client
-                )
-                await interaction.followup.send(embed=embed, ephemeral=True)
-                return
-            
-            embed = create_concurrent_embed(count_info, self.client)
-            
-            # SteamDB 링크 버튼 생성
-            view = discord.ui.View()
-            button = discord.ui.Button(
-                style=discord.ButtonStyle.link,
-                label="SteamDB 바로가기",
-                emoji=EMOJIS['chart'],
-                url="https://steamdb.info/app/1049590/graphs/"
-            )
-            view.add_item(button)
-            
-            await interaction.followup.send(embed=embed, view=view)
-        except Exception as e:
-            logger.error(f"동접 명령어 실행 중 오류 발생: {e}", exc_info=True)
+        await interaction.response.defer()
+
+        # Steam API 키 확인
+        if not config.steam_api_key:
             embed = create_error_embed(
-                "오류 발생",
-                "동시 접속자 수를 가져오는 중 오류가 발생했습니다.",
+                "Steam API 키 없음",
+                "Steam API 키가 설정되지 않아 동시 접속자 수를 조회할 수 없습니다.\n관리자에게 문의해주세요.",
                 self.client
             )
-            try:
-                if not interaction.response.is_done():
-                    await interaction.response.send_message(embed=embed, ephemeral=True)
-                else:
-                    await interaction.followup.send(embed=embed, ephemeral=True)
-            except Exception:
-                pass  # 에러 메시지 전송 실패는 무시
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+
+        count_info = await get_player_count(self.client)
+
+        if not count_info:
+            embed = create_error_embed(
+                "데이터 조회 실패",
+                "현재 동시 접속자 수를 가져올 수 없습니다.\nSteam API 서버에 문제가 있을 수 있습니다.\n잠시 후 다시 시도해주세요.",
+                self.client
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+
+        embed = create_concurrent_embed(count_info, self.client)
+
+        # SteamDB 링크 버튼 생성
+        view = discord.ui.View()
+        button = discord.ui.Button(
+            style=discord.ButtonStyle.link,
+            label="SteamDB 바로가기",
+            emoji=EMOJIS['chart'],
+            url="https://steamdb.info/app/1049590/graphs/"
+        )
+        view.add_item(button)
+
+        await interaction.followup.send(embed=embed, view=view)
 
     @tasks.loop(minutes=1)
     async def save_concurrent_data(self):

@@ -458,22 +458,17 @@ class Season(commands.Cog):
     async def season_command(self, interaction: discord.Interaction):
         """
         현재 시즌 정보를 보여줍니다.
-        
+
         시즌 이름, 시작일, 종료일, 진행도를 포함한 정보를 표시합니다.
         상호작용 버튼을 통해 공식 사이트와 패치 노트에 접근할 수 있습니다.
         """
-        try:
-            await interaction.response.defer()
-            
-            season_info = await get_season_info()
-            embed = create_season_embed(season_info, self.client)
-            view = SeasonView(self.client)
-            
-            await interaction.followup.send(embed=embed, view=view)
-            
-        except Exception as e:
-            logger.error(f"시즌 명령어 실행 중 오류: {e}", exc_info=True)
-            # handle_errors 데코레이터가 이미 에러를 처리하므로 여기서는 추가 처리 불필요
+        await interaction.response.defer()
+
+        season_info = await get_season_info()
+        embed = create_season_embed(season_info, self.client)
+        view = SeasonView(self.client)
+
+        await interaction.followup.send(embed=embed, view=view)
 
 async def setup(client: ERClient):
     """명령어를 등록합니다."""

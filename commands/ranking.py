@@ -1,13 +1,11 @@
 import discord
-from discord import Embed, Color
 from discord.ext import commands
 from discord import app_commands
-from typing import List, Dict, Any, NamedTuple, Optional, Tuple
+from typing import List, Dict, Any, NamedTuple, Optional
 from client import ERClient
-import aiohttp
 from commands.season import get_current_season_id
 import math
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from utils.config import config
 from utils.embeds import create_info_embed, create_error_embed, create_loading_embed
@@ -167,64 +165,52 @@ class Ranking(commands.Cog):
     @handle_errors(user_message="랭킹 정보를 가져오는 중 오류가 발생했습니다.")
     async def ranking_command(self, interaction: discord.Interaction):
         """랭킹을 보여줍니다."""
-        try:
-            # 로딩 메시지 표시
-            loading_embed = create_loading_embed(
-                "랭킹 조회 중...",
-                "상위 100명의 랭킹 데이터를 불러오고 있습니다.",
-                self.client
-            )
-            await interaction.response.send_message(embed=loading_embed)
+        # 로딩 메시지 표시
+        loading_embed = create_loading_embed(
+            "랭킹 조회 중...",
+            "상위 100명의 랭킹 데이터를 불러오고 있습니다.",
+            self.client
+        )
+        await interaction.response.send_message(embed=loading_embed)
 
-            season_id = await get_current_season_id()
-            if not season_id:
-                await interaction.followup.send("현재 시즌 정보를 가져올 수 없습니다.", ephemeral=True)
-                return
+        season_id = await get_current_season_id()
+        if not season_id:
+            error_embed = create_error_embed("시즌 정보 오류", "현재 시즌 정보를 가져올 수 없습니다.", self.client)
+            await interaction.edit_original_response(embed=error_embed)
+            return
 
-            # 시즌 정보 가져오기
-            from commands.season import get_season_info
-            season_info = await get_season_info()
-            season_name = season_info.name if season_info else "현재 시즌"
+        # 시즌 정보 가져오기
+        from commands.season import get_season_info
+        season_info = await get_season_info()
+        season_name = season_info.name if season_info else "현재 시즌"
 
-            # 모든 페이지의 유저 정보를 미리 로드하여 캐시
-            total_pages = math.ceil(TOTAL_RANKS / RANKS_PER_PAGE)
-            cached_users = []
+        # 모든 페이지의 유저 정보를 미리 로드하여 캐시
+        total_pages = math.ceil(TOTAL_RANKS / RANKS_PER_PAGE)
+        cached_users = []
 
-            for page in range(1, total_pages + 1):
-                users = await get_ranking_info(self.client, season_id, page, fetch_stats=True)
-                if not users:
-                    # 일부 페이지 로드 실패 시 빈 리스트 추가
-                    cached_users.append([])
-                    logger.warning(f"페이지 {page} 로드 실패")
-                else:
-                    cached_users.append(users)
-
-            # 첫 페이지가 없으면 에러
-            if not cached_users or not cached_users[0]:
-                error_embed = create_error_embed("오류 발생", "랭킹 정보를 가져올 수 없습니다.", self.client)
-                await interaction.edit_original_response(embed=error_embed)
-                return
-
-            # 이미지와 임베드 생성
-            embed, image_bytes = create_ranking_embed_with_image(
-                cached_users[0], 1, total_pages, season_name, self.client
-            )
-            view = PaginationView(self.client, season_id, total_pages, cached_users, season_name)
-
-            # 이미지 파일로 첨부
-            file = discord.File(image_bytes, filename="ranking.png")
-            await interaction.edit_original_response(embed=embed, view=view, attachments=[file])
-        except Exception as e:
-            logger.error(f"랭킹 명령어 실행 중 오류 발생: {e}", exc_info=True)
-            error_embed = create_error_embed(
-                "오류 발생",
-                "랭킹 정보를 가져오는 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.",
-                self.client
-            )
-            if not interaction.response.is_done():
-                await interaction.response.send_message(embed=error_embed, ephemeral=True)
+        for page in range(1, total_pages + 1):
+            users = await get_ranking_info(self.client, season_id, page, fetch_stats=True)
+            if not users:
+                cached_users.append([])
+                logger.warning(f"페이지 {page} 로드 실패")
             else:
-                await interaction.edit_original_response(embed=error_embed)
+                cached_users.append(users)
+
+        # 첫 페이지가 없으면 에러
+        if not cached_users or not cached_users[0]:
+            error_embed = create_error_embed("오류 발생", "랭킹 정보를 가져올 수 없습니다.", self.client)
+            await interaction.edit_original_response(embed=error_embed)
+            return
+
+        # 이미지와 임베드 생성
+        embed, image_bytes = create_ranking_embed_with_image(
+            cached_users[0], 1, total_pages, season_name, self.client
+        )
+        view = PaginationView(self.client, season_id, total_pages, cached_users, season_name)
+
+        # 이미지 파일로 첨부
+        file = discord.File(image_bytes, filename="ranking.png")
+        await interaction.edit_original_response(embed=embed, view=view, attachments=[file])
 
 async def setup(client: ERClient):
     """명령어를 등록합니다."""

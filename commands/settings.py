@@ -1,13 +1,11 @@
 import discord
-from discord import Embed, Color, SelectOption, Interaction, ButtonStyle
+from discord import Embed, Interaction, ButtonStyle
 from discord.ext import commands
 from discord import app_commands
-from discord.ui import Select, View, Button
-import json
-from typing import Optional, Set, Dict, Any
+from discord.ui import View, Button
+from typing import Optional, Set
 from client import ERClient
 from pathlib import Path
-from datetime import datetime
 
 from utils.config import config
 from utils.embeds import create_info_embed, create_error_embed, create_success_embed
@@ -173,18 +171,13 @@ class Settings(commands.Cog):
     @handle_errors(user_message="설정을 가져오는 중 오류가 발생했습니다.")
     async def settings_command(self, interaction: discord.Interaction):
         """서버의 봇 설정을 관리합니다."""
-        try:
-            disabled_servers = load_disabled_servers()
-            is_enabled = interaction.guild_id not in disabled_servers
-            
-            embed = create_settings_embed(interaction.guild_id, is_enabled, self.client)
-            view = SettingsView(interaction.guild_id, self.client)
-            
-            await interaction.response.send_message(embed=embed, view=view)
-            
-        except Exception as e:
-            logger.error(f"설정 명령어 실행 중 오류 발생: {e}", exc_info=True)
-            # handle_errors 데코레이터가 이미 에러를 처리하므로 여기서는 추가 처리 불필요
+        disabled_servers = load_disabled_servers()
+        is_enabled = interaction.guild_id not in disabled_servers
+
+        embed = create_settings_embed(interaction.guild_id, is_enabled, self.client)
+        view = SettingsView(interaction.guild_id, self.client)
+
+        await interaction.response.send_message(embed=embed, view=view)
 
 async def setup(client: ERClient):
     """명령어를 등록합니다."""
