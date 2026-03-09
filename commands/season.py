@@ -1,3 +1,4 @@
+import os
 import discord
 from discord import Embed, Color
 from discord.ext import commands
@@ -21,6 +22,11 @@ KST = pytz.timezone('Asia/Seoul')
 # 시즌 관련 상수
 SEASON_ZERO_ID = 19  # 시즌 0이 되는 ID 값
 SEASON_NAME_OFFSET = 9  # Season16은 시즌7이므로, 9를 빼면 됨
+
+# 시즌 데이터 캐시 (API 호출 최소화)
+_season_cache: Optional[Dict[str, Any]] = None
+_season_cache_time: Optional[datetime] = None
+SEASON_CACHE_TTL = timedelta(minutes=30)
 
 def get_season_name(season_id: int, season_name: str) -> str:
     """
@@ -61,59 +67,72 @@ class SeasonInfo(NamedTuple):
 
 async def fetch_season_data(season_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
     """
-    API에서 시즌 정보를 가져옵니다.
-    
+    API에서 시즌 정보를 가져옵니다. 캐시를 사용하여 API 호출을 최소화합니다.
+
     Args:
         season_id: 특정 시즌 ID를 찾을 경우 사용. None이면 현재 시즌(isCurrent=1)을 반환.
-        
+
     Returns:
         시즌 정보 딕셔너리 또는 None
     """
+    global _season_cache, _season_cache_time
+
+    # 현재 시즌 조회 시 캐시 확인
+    if season_id is None and _season_cache is not None and _season_cache_time is not None:
+        if datetime.now() - _season_cache_time < SEASON_CACHE_TTL:
+            return _season_cache
+
     try:
         from utils.api_client import api_client
-        
+
         # API URL을 config에서 가져오되, v2 버전 사용
         base_url = config.api_url.replace('/v1', '/v2')
         url = f'{base_url}/data/Season'
-        
+
         data = await api_client.get(url, use_cache=True)
-        
-        if not data or 'data' not in data or not isinstance(data['data'], list) or len(data['data']) == 0:
-            logger.error("시즌 API 응답 오류")
+
+        if not data:
+            logger.error("시즌 API 응답 없음")
             return None
-        
+
+        # API 응답 형식 유연하게 처리 (data 필드가 리스트인 경우와 아닌 경우)
+        season_list = data.get('data', [])
+        if not isinstance(season_list, list):
+            season_list = [season_list] if season_list else []
+
+        if not season_list:
+            logger.error("시즌 데이터가 비어있습니다")
+            return None
+
         # 특정 season_id를 찾는 경우
         if season_id is not None:
-            for season in data['data']:
+            for season in season_list:
                 if isinstance(season, dict) and season.get('seasonID') == season_id:
-                    # 필수 필드 검증
-                    required_fields = ['seasonID', 'seasonName', 'seasonStart', 'seasonEnd']
-                    for field in required_fields:
-                        if field not in season:
-                            logger.error(f"시즌 데이터에 필수 필드 '{field}' 누락")
-                            return None
                     return season
             return None
-        
+
         # 현재 시즌 찾기 (isCurrent = 1)
         current_season = None
-        for season in data['data']:
+        for season in season_list:
             if isinstance(season, dict) and season.get('isCurrent') == 1:
                 current_season = season
                 break
-        
-        if not current_season:
-            return None
-            
-        # 필수 필드 검증
-        required_fields = ['seasonID', 'seasonName', 'seasonStart', 'seasonEnd']
-        for field in required_fields:
-            if field not in current_season:
-                logger.error(f"시즌 데이터에 필수 필드 '{field}' 누락")
-                return None
-        
+
+        # isCurrent가 없는 경우 가장 높은 seasonID 사용
+        if not current_season and season_list:
+            current_season = max(
+                (s for s in season_list if isinstance(s, dict) and 'seasonID' in s),
+                key=lambda s: s['seasonID'],
+                default=None
+            )
+
+        if current_season:
+            # 캐시 업데이트
+            _season_cache = current_season
+            _season_cache_time = datetime.now()
+
         return current_season
-        
+
     except Exception as e:
         logger.error(f"시즌 API 호출 중 오류: {e}", exc_info=True)
         return None
@@ -121,54 +140,101 @@ async def fetch_season_data(season_id: Optional[int] = None) -> Optional[Dict[st
 async def get_current_season_id() -> Optional[int]:
     """
     현재 시즌 ID를 가져옵니다.
-    .env 파일의 SEASON_ID 환경변수에서만 가져옵니다.
-    
+    API에서 우선 조회하고, 실패 시 환경변수를 fallback으로 사용합니다.
+
     Returns:
         현재 시즌 ID 또는 None
     """
     try:
-        # 환경변수에서만 시즌 ID 가져오기
-        season_id = getattr(config, 'season_id', None)
-        if season_id is not None:
-            return season_id
+        # 1. API에서 현재 시즌 조회
+        season_data = await fetch_season_data()
+        if season_data and 'seasonID' in season_data:
+            return season_data['seasonID']
+
+        # 2. 환경변수 fallback
+        env_season_id = os.getenv('SEASON_ID')
+        if env_season_id is not None:
+            logger.warning(f"API에서 시즌 정보를 가져올 수 없어 환경변수 사용: SEASON_ID={env_season_id}")
+            return int(env_season_id)
+
         return None
     except Exception as e:
         logger.error(f"현재 시즌 ID 조회 중 오류: {e}", exc_info=True)
-        return None
+        # 환경변수 fallback
+        env_val = os.getenv('SEASON_ID')
+        return int(env_val) if env_val else None
+
+def _parse_season_date(date_str: str) -> Optional[datetime]:
+    """시즌 날짜 문자열을 파싱합니다. 여러 형식을 지원합니다."""
+    formats = [
+        '%Y-%m-%dT%H:%M:%S%z',      # ISO 8601 with timezone
+        '%Y-%m-%dT%H:%M:%S.%f%z',   # ISO 8601 with microseconds
+        '%Y-%m-%dT%H:%M:%S',         # ISO 8601 without timezone
+        '%Y-%m-%d %H:%M:%S',         # 환경변수 형식
+        '%Y/%m/%d %H:%M:%S',         # 슬래시 형식
+    ]
+    for fmt in formats:
+        try:
+            dt = datetime.strptime(date_str, fmt)
+            if dt.tzinfo is None:
+                dt = KST.localize(dt)
+            return dt
+        except ValueError:
+            continue
+    return None
 
 async def get_season_info() -> Optional[SeasonInfo]:
     """
     시즌 정보를 가져옵니다.
-    
+    API에서 우선 조회하고, 실패 시 환경변수를 fallback으로 사용합니다.
+
     Returns:
         SeasonInfo 객체 또는 None
     """
     try:
-        # 환경변수에서만 시즌 ID 가져오기
-        env_season_id = getattr(config, 'season_id', None)
-        if env_season_id is None:
-            logger.warning("환경변수 SEASON_ID가 설정되지 않았습니다")
+        # 1. API에서 현재 시즌 조회
+        season_data = await fetch_season_data()
+        if season_data:
+            season_id = season_data.get('seasonID')
+            season_name_raw = season_data.get('seasonName', '')
+            season_start_str = season_data.get('seasonStart', '')
+            season_end_str = season_data.get('seasonEnd', '')
+
+            if season_id and season_start_str and season_end_str:
+                start_date = _parse_season_date(season_start_str)
+                end_date = _parse_season_date(season_end_str)
+
+                if start_date and end_date:
+                    # 시즌 이름 변환
+                    season_name = get_season_name(season_id, season_name_raw)
+                    return SeasonInfo(
+                        number=season_id,
+                        start_date=start_date,
+                        end_date=end_date,
+                        name=season_name
+                    )
+
+        # 2. 환경변수 fallback
+        env_season_id_str = os.getenv('SEASON_ID')
+        if not env_season_id_str:
+            logger.warning("시즌 정보를 API와 환경변수 모두에서 가져올 수 없습니다")
             return None
-        
-        # 환경변수에서 시즌 날짜 정보 가져오기
-        if not (getattr(config, 'season_start', None) and getattr(config, 'season_end', None)):
+        env_season_id = int(env_season_id_str)
+
+        env_start_str = os.getenv('SEASON_START')
+        env_end_str = os.getenv('SEASON_END')
+        if not (env_start_str and env_end_str):
             logger.warning("환경변수 SEASON_START 또는 SEASON_END가 설정되지 않았습니다")
             return None
-        
-        try:
-            env_start = datetime.strptime(config.season_start, '%Y-%m-%d %H:%M:%S')
-            env_end = datetime.strptime(config.season_end, '%Y-%m-%d %H:%M:%S')
-            start_date = KST.localize(env_start)
-            end_date = KST.localize(env_end)
-        except ValueError as e:
-            logger.error(f"환경변수 시즌 날짜 파싱 오류: {e}", exc_info=True)
+
+        start_date = _parse_season_date(env_start_str)
+        end_date = _parse_season_date(env_end_str)
+        if not (start_date and end_date):
+            logger.error("환경변수 시즌 날짜 파싱 실패")
             return None
-        
-        # 환경변수에서 시즌 이름 가져오기
-        season_name = getattr(config, 'season_name', None)
-        if not season_name:
-            # 환경변수가 없으면 기본 형식 사용
-            season_name = f"시즌 {env_season_id}"
+
+        season_name = os.getenv('SEASON_NAME') or f"시즌 {env_season_id}"
+        logger.warning(f"API에서 시즌 정보를 가져올 수 없어 환경변수 사용: {season_name}")
 
         return SeasonInfo(
             number=env_season_id,
