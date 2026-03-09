@@ -1,43 +1,21 @@
 import discord
-from discord import Embed, Color
+from discord import Embed
 from discord.ext import commands
 from discord import app_commands
-from typing import Optional, Dict, Any, NamedTuple
+from typing import Optional, Dict, Any
 from client import ERClient
-import aiohttp
 
 from commands.season import get_current_season_id, get_season_info
 from utils.config import config
 from utils.embeds import create_info_embed, create_error_embed, create_loading_embed
 from utils.errors import handle_errors, validate_nickname, NotFoundError, APIError
 from utils.logging_config import get_logger
-from utils.l10n_loader import get_character_name
+from utils.character_names import get_character_name
 from utils.rank_helpers import fetch_user_stats_solo
 from utils.tier_system import TierSystem
 from utils.emojis import EMOJIS
 
 logger = get_logger('랭크')
-
-class RankStats(NamedTuple):
-    """랭크 통계 정보를 저장하는 네임드 튜플"""
-    mmr: int
-    rank: int
-    rank_size: int
-    games: int
-    wins: int
-    team_kills: int
-    deaths: int
-    escapes: int
-    avg_rank: float
-    avg_kills: float
-    avg_assists: float
-    avg_hunts: float
-    top1_rate: float
-    top2_rate: float
-    top3_rate: float
-    top5_rate: float
-    top7_rate: float
-    tier: str
 
 
 def create_rank_embed(nickname: str, stats: Dict[str, Any], client: ERClient) -> tuple[Embed, None]:
