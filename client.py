@@ -72,7 +72,13 @@ class ERClient(commands.Bot):
             ]:
                 await self.load_extension(module)
 
-            await self.tree.sync()
+            # 커맨드 동기화는 SYNC_COMMANDS=1 환경변수가 설정된 경우에만 수행
+            # 매 재시작마다 sync하면 Discord rate limit에 걸려 연결 끊김/재연결 반복 발생
+            if os.getenv('SYNC_COMMANDS') == '1':
+                await self.tree.sync()
+                logger.info("슬래시 커맨드 동기화 완료")
+            else:
+                logger.info("슬래시 커맨드 동기화 건너뜀 (SYNC_COMMANDS=1로 설정하면 동기화)")
 
         except Exception:
             raise
