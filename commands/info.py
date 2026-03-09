@@ -62,14 +62,15 @@ async def get_bot_info(client: ERClient) -> BotInfo:
         # 서버 수
         guild_count = len(client.guilds)
         
-        # 유저 수 (중복 제외)
+        # 유저 수 (중복 제외) - members 캐시가 있으면 정확한 중복 제거, 없으면 member_count 합산
         unique_users = set()
+        fallback_count = 0
         for guild in client.guilds:
-            if guild.member_count:  # member_count가 있는 경우 사용
+            if guild.members:
                 unique_users.update(member.id for member in guild.members)
-            else:  # 없는 경우 직접 계산
-                unique_users.update(member.id for member in guild.members)
-        user_count = len(unique_users)
+            else:
+                fallback_count += guild.member_count or 0
+        user_count = len(unique_users) + fallback_count
 
         # 채널 수
         channel_count = sum(len(guild.channels) for guild in client.guilds if guild.channels)
