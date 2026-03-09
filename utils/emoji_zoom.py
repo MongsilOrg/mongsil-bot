@@ -4,6 +4,7 @@
 import discord
 import json
 import asyncio
+import re
 from typing import Optional, Set, Dict
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -33,6 +34,9 @@ _webhook_permission_notified: Set[int] = set()
 WEBHOOK_NAME = "몽실봇 이모지 확대"
 EMOJI_CDN_BASE = "https://cdn.discordapp.com/emojis/"
 AVATAR_SIZE = 1024
+
+# 커스텀 이모지 패턴 (여러 개 감지용)
+CUSTOM_EMOJI_PATTERN = re.compile(r'<a?:\w+:\d+>')
 
 def load_disabled_servers() -> Set[int]:
     """이모지 확대 기능이 비활성화된 서버 목록을 로드합니다. (최고 성능 캐시)"""
@@ -212,12 +216,21 @@ async def process_emoji_zoom(message: discord.Message) -> None:
         return
 
     # 이모지 형식 초고속 체크
-    content = message.content
+    content = message.content.strip()
     length = len(content)
-    if (length < 10 or length > 100 or 
+    if (length < 10 or length > 100 or
         content[0] != '<' or content[-1] != '>' or ':' not in content):
         return
-    
+
+    # 커스텀 이모지가 2개 이상이면 확대하지 않음
+    emoji_matches = CUSTOM_EMOJI_PATTERN.findall(content)
+    if len(emoji_matches) != 1:
+        return
+
+    # 이모지 외에 다른 텍스트가 있으면 확대하지 않음
+    if content != emoji_matches[0]:
+        return
+
     # 이모지 정보 추출 (한 번만 파싱)
     try:
         emoji = discord.PartialEmoji.from_str(content)
