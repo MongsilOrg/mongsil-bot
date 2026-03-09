@@ -83,8 +83,10 @@ class OptimizedAPIClient:
             del self._cache[oldest_key]
             del self._cache_times[oldest_key]
     
-    async def get(self, url: str, params: Optional[Dict] = None, use_cache: bool = True) -> Dict[str, Any]:
+    async def get(self, url: str, params: Optional[Dict] = None, use_cache: bool = True, _retry_count: int = 0) -> Dict[str, Any]:
         """GET 요청을 수행합니다."""
+        MAX_RETRIES = 3
+
         cache_key = self._get_cache_key(url, params)
 
         # 캐시 확인
@@ -92,11 +94,11 @@ class OptimizedAPIClient:
             # LRU: 최근 사용 항목으로 이동
             self._cache.move_to_end(cache_key)
             return self._cache[cache_key]
-        
+
         # 세마포어를 사용하여 동시 요청 제한
         async with self._semaphore:
             session = await self.get_session()
-            
+
             try:
                 async with session.get(url, params=params) as response:
                     if response.status == 200:
@@ -105,11 +107,15 @@ class OptimizedAPIClient:
                             self._set_cache(cache_key, data)
                         return data
                     elif response.status == 429:
-                        # Rate limit - 재시도
+                        if _retry_count >= MAX_RETRIES:
+                            raise APIError(
+                                f"API Rate limit 초과 (최대 {MAX_RETRIES}회 재시도 후 실패)",
+                                "API 요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요."
+                            )
                         retry_after = int(response.headers.get('Retry-After', config.retry_delay))
-                        logger.warning(f"API Rate limit - {retry_after}초 대기")
+                        logger.warning(f"API Rate limit - {retry_after}초 대기 (재시도 {_retry_count + 1}/{MAX_RETRIES})")
                         await asyncio.sleep(retry_after)
-                        return await self.get(url, params, use_cache)
+                        return await self.get(url, params, use_cache, _retry_count + 1)
                     else:
                         error_text = await response.text()
                         logger.error(f"API 요청 실패: {response.status}")
