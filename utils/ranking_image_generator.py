@@ -3,7 +3,6 @@
 """
 import os
 import io
-import discord
 from typing import List, Optional, Tuple
 from PIL import Image, ImageDraw, ImageFont
 from utils.logging_config import get_logger
@@ -352,23 +351,3 @@ def create_ranking_image(users: List, current_page: int, total_pages: int,
             logger.error(f"Fallback 이미지 생성도 실패: {fallback_error}")
             raise
 
-def create_ranking_embed_with_image(users: List, current_page: int, total_pages: int, 
-                                   season_name: str, client: discord.Client) -> Tuple[discord.Embed, io.BytesIO]:
-    """이미지가 포함된 랭킹 임베드를 생성합니다."""
-    from utils.embeds import create_info_embed
-    
-    # 이미지 생성
-    image_bytes = create_ranking_image(users, current_page, total_pages, season_name)
-    
-    # 임베드 생성 (게임 이름과 시즌 정보를 title에 표시)
-    embed = create_info_embed(
-        title=f"🏆 {season_name} - KR 랭킹",
-        description="",
-        client=client,
-        add_icon=False
-    )
-    
-    # 이미지 첨부
-    embed.set_image(url="attachment://ranking.png")
-    
-    return embed, image_bytes
