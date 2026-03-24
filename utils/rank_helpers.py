@@ -79,7 +79,7 @@ async def fetch_ranking_data(client: ERClient, season_id: int, use_cache: bool =
         랭킹 데이터 리스트 또는 None
     """
     try:
-        url = f"{config.api_url}/rank/top/{season_id}/3"
+        url = f"{config.api_url}/rank/top/{season_id}/3/10"
 
         data = await client.api_client.get(url, use_cache=use_cache)
 
