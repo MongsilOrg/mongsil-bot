@@ -5,7 +5,7 @@ from discord import app_commands, ui
 from client import ERClient
 
 from utils.config import config
-from utils.layouts import create_error_layout, create_success_layout, footer_text
+from utils.layouts import create_error_layout, create_success_layout, footer_text, CooldownLayoutView
 from utils.errors import handle_errors
 from utils.logging_config import get_logger
 from utils.emoji_zoom import load_disabled_servers, save_disabled_servers
@@ -22,7 +22,7 @@ SETTINGS_CONFIG = {
     }
 }
 
-class SettingsView(ui.LayoutView):
+class SettingsView(CooldownLayoutView):
     def __init__(self, guild_id: int, client: ERClient):
         super().__init__(timeout=config.view_timeout_interactive)
         self.guild_id = guild_id
@@ -55,8 +55,12 @@ class SettingsView(ui.LayoutView):
         self.add_item(ui.ActionRow(btn))
 
     async def interaction_check(self, interaction: Interaction) -> bool:
+        if not await super().interaction_check(interaction):
+            return False
+
         custom_id = interaction.data.get("custom_id")
         if custom_id != "toggle_emoji":
+            await interaction.response.defer()
             return False
 
         if not interaction.user.guild_permissions.administrator:
