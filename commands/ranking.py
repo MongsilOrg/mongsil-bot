@@ -1,3 +1,4 @@
+import asyncio
 import discord
 from discord.ext import commands
 from discord import app_commands, ui
@@ -7,7 +8,7 @@ from commands.season import get_current_season_id
 import math
 
 from utils.config import config
-from utils.layouts import create_error_layout, create_loading_layout, footer_text
+from utils.layouts import create_error_layout, create_loading_layout, footer_text, CooldownLayoutView
 from utils.errors import handle_errors
 from utils.logging_config import get_logger
 from utils.ranking_image_generator import create_ranking_image
@@ -30,14 +31,14 @@ class RankUser(NamedTuple):
     avg_kills: float = 0.0
     character_stats: list = None
 
-class PaginationView(ui.LayoutView):
-    def __init__(self, client: ERClient, season_id: int, total_pages: int, cached_users: List[List[RankUser]], season_name: str):
+class PaginationView(CooldownLayoutView):
+    def __init__(self, client: ERClient, season_id: int, total_pages: int, first_page_users: List[RankUser], season_name: str):
         super().__init__(timeout=config.view_timeout_interactive)
         self.client = client
         self.season_id = season_id
         self.current_page = 1
         self.total_pages = total_pages
-        self.cached_users = cached_users  # 모든 페이지의 유저 데이터 캐시
+        self.page_cache: Dict[int, List[RankUser]] = {1: first_page_users}
         self.season_name = season_name
 
         self.build_layout()
@@ -64,7 +65,10 @@ class PaginationView(ui.LayoutView):
         self.add_item(row)
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        """버튼 클릭을 핸들링합니다."""
+        """버튼 클릭을 핸들링합니다. (1초 쿨다운 적용)"""
+        if not await super().interaction_check(interaction):
+            return False
+
         custom_id = interaction.data.get("custom_id")
         if custom_id == "prev" and self.current_page > 1:
             self.current_page -= 1
@@ -79,12 +83,17 @@ class PaginationView(ui.LayoutView):
         return False
 
     async def update_page(self, interaction: discord.Interaction):
-        """페이지를 업데이트합니다 (캐시된 데이터 사용)."""
+        """페이지를 업데이트합니다. 캐시에 없으면 lazy-load합니다."""
         try:
-            # 캐시된 데이터에서 현재 페이지의 유저 정보 가져오기
-            users = self.cached_users[self.current_page - 1]
+            await interaction.response.defer()
+
+            # 캐시 확인, 없으면 해당 페이지만 로드
+            users = self.page_cache.get(self.current_page)
+            if users is None:
+                users = await get_ranking_info(self.client, self.season_id, self.current_page, fetch_stats=True)
+                self.page_cache[self.current_page] = users or []
+
             if not users:
-                await interaction.response.send_message("랭킹 정보를 가져올 수 없습니다.", ephemeral=True)
                 return
 
             # 이미지 생성
@@ -94,14 +103,13 @@ class PaginationView(ui.LayoutView):
 
             # 이미지 파일로 첨부
             file = discord.File(image_bytes, filename="ranking.png")
-            await interaction.response.edit_message(view=self, attachments=[file])
+            await interaction.edit_original_response(view=self, attachments=[file])
         except Exception as e:
             logger.error(f"페이지 업데이트 중 오류 발생: {e}", exc_info=True)
-            await interaction.response.send_message("페이지를 업데이트하는 중 오류가 발생했습니다.", ephemeral=True)
 
 
 async def get_ranking_info(client: ERClient, season_id: int, page: int = 1, fetch_stats: bool = True) -> Optional[List[RankUser]]:
-    """랭킹 정보를 가져옵니다."""
+    """랭킹 정보를 가져옵니다. 유저별 통계는 병렬로 조회합니다."""
     try:
         ranking_data = await fetch_ranking_data(client, season_id, use_cache=True)
         if ranking_data is None:
@@ -112,54 +120,57 @@ async def get_ranking_info(client: ERClient, season_id: int, page: int = 1, fetc
         end_idx = min(start_idx + RANKS_PER_PAGE, len(ranking_data))
         page_data = ranking_data[start_idx:end_idx]
 
-        users = []
-        for user_data in page_data:
-            games = wins = 0
-            avg_rank = avg_kills = 0.0
-            stats = None
+        if not fetch_stats:
+            return [
+                RankUser(
+                    rank=ud.get('rank', 0),
+                    nickname=ud.get('nickname', ''),
+                    mmr=ud.get('mmr', 0),
+                    user_id=ud.get('nickname', ''),
+                )
+                for ud in page_data
+            ]
 
-            # API 응답에는 userId가 없으므로 닉네임으로 userId 조회
+        async def fetch_single_user(user_data):
+            """개별 유저의 통계를 가져옵니다."""
             nickname = user_data.get('nickname', '')
             user_id = None
+            stats = None
 
-            # 닉네임으로 userId 조회 시도
-            if nickname and fetch_stats:
+            if nickname:
                 user_id = await client.get_user_nickname(nickname)
-                if not user_id:
-                    logger.warning(f"닉네임으로 userId를 찾을 수 없습니다: {nickname}")
 
-            # userId가 있으면 통계 정보 가져오기
-            if fetch_stats and user_id:
+            if user_id:
                 try:
                     stats = await fetch_user_stats_solo(client, user_id, season_id, use_cache=True)
                 except Exception:
                     stats = None
-                if stats:
-                    games = int(stats.get('totalGames', 0))
-                    wins = int(stats.get('totalWins', 0))
-                    avg_rank = float(stats.get('averageRank', 0.0))
-                    avg_kills = float(stats.get('averageKills', 0.0))
 
-            # characterStats는 stats에서 가져와야 함 (user_data가 아닌)
+            games = wins = 0
+            avg_rank = avg_kills = 0.0
             character_stats = []
-            if fetch_stats and stats:
+
+            if stats:
+                games = int(stats.get('totalGames', 0))
+                wins = int(stats.get('totalWins', 0))
+                avg_rank = float(stats.get('averageRank', 0.0))
+                avg_kills = float(stats.get('averageKills', 0.0))
                 character_stats = stats.get('characterStats', [])
 
-            # userId가 없으면 닉네임을 user_id로 사용
-            final_user_id = user_id if user_id else nickname
-
-            users.append(RankUser(
+            return RankUser(
                 rank=user_data.get('rank', 0),
                 nickname=nickname,
                 mmr=user_data.get('mmr', 0),
-                user_id=final_user_id,
+                user_id=user_id if user_id else nickname,
                 games=games,
                 wins=wins,
                 avg_rank=avg_rank,
                 avg_kills=avg_kills,
                 character_stats=character_stats
-            ))
-        return users
+            )
+
+        users = await asyncio.gather(*[fetch_single_user(ud) for ud in page_data])
+        return list(users)
     except Exception as e:
         logger.error(f"랭킹 정보 처리 중 오류 발생: {e}", exc_info=True)
         return None
@@ -191,29 +202,27 @@ class Ranking(commands.Cog):
         season_info = await get_season_info()
         season_name = season_info.name if season_info else "현재 시즌"
 
-        # 모든 페이지의 유저 정보를 미리 로드하여 캐시
-        total_pages = math.ceil(TOTAL_RANKS / RANKS_PER_PAGE)
-        cached_users = []
+        # 랭킹 데이터 가져오기 (1회 호출로 1000명 데이터 수신, 이후 캐시 사용)
+        ranking_data = await fetch_ranking_data(self.client, season_id, use_cache=True)
+        if not ranking_data:
+            error_layout = create_error_layout("오류 발생", "랭킹 정보를 가져올 수 없습니다.", self.client)
+            await interaction.edit_original_response(view=error_layout, embeds=[], attachments=[])
+            return
 
-        for page in range(1, total_pages + 1):
-            users = await get_ranking_info(self.client, season_id, page, fetch_stats=True)
-            if not users:
-                cached_users.append([])
-                logger.warning(f"페이지 {page} 로드 실패")
-            else:
-                cached_users.append(users)
+        total_pages = math.ceil(min(len(ranking_data), TOTAL_RANKS) / RANKS_PER_PAGE)
 
-        # 첫 페이지가 없으면 에러
-        if not cached_users or not cached_users[0]:
+        # 첫 페이지만 로드 (나머지는 페이지 이동 시 lazy-load)
+        first_page_users = await get_ranking_info(self.client, season_id, 1, fetch_stats=True)
+        if not first_page_users:
             error_layout = create_error_layout("오류 발생", "랭킹 정보를 가져올 수 없습니다.", self.client)
             await interaction.edit_original_response(view=error_layout, embeds=[], attachments=[])
             return
 
         # 첫 페이지 이미지 생성
-        image_bytes = create_ranking_image(cached_users[0], 1, total_pages, season_name)
+        image_bytes = create_ranking_image(first_page_users, 1, total_pages, season_name)
 
-        # PaginationView 생성
-        view = PaginationView(self.client, season_id, total_pages, cached_users, season_name)
+        # PaginationView 생성 (첫 페이지 캐시 전달, 이후 페이지는 on-demand)
+        view = PaginationView(self.client, season_id, total_pages, first_page_users, season_name)
 
         # 이미지 파일로 첨부
         file = discord.File(image_bytes, filename="ranking.png")
