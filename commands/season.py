@@ -1,6 +1,6 @@
 import os
 import discord
-from discord import Embed, Color
+from discord import ui
 from discord.ext import commands
 from discord import app_commands
 from datetime import datetime, timedelta
@@ -9,7 +9,7 @@ import pytz
 from client import ERClient
 
 from utils.config import config
-from utils.embeds import create_info_embed, create_error_embed
+from utils.layouts import create_error_layout, footer_text
 from utils.errors import handle_errors, APIError
 from utils.logging_config import get_logger
 from utils.emojis import SEASON_EMOJIS, SEASON_PROGRESS_EMOJIS, EMOJIS
@@ -31,17 +31,17 @@ SEASON_CACHE_TTL = timedelta(minutes=30)
 def get_season_name(season_id: int, season_name: str) -> str:
     """
     시즌 ID와 시즌 이름을 기반으로 한국어 시즌 이름을 생성합니다.
-    
+
     Args:
         season_id: 시즌 ID
         season_name: API에서 받은 시즌 이름 (예: "Season16", "Pre-Season7")
-        
+
     Returns:
         한국어로 번역된 시즌 이름
     """
     if season_id <= SEASON_ZERO_ID:
         return f"EA 시즌 {season_id}"
-    
+
     try:
         # seasonName에서 시즌 번호 추출
         if season_name.startswith("Pre-Season"):
@@ -250,15 +250,15 @@ async def get_season_info() -> Optional[SeasonInfo]:
 def _calculate_season_progress(season_info: SeasonInfo) -> Tuple[float, str, str, str]:
     """
     시즌 진행도를 계산합니다.
-    
+
     Args:
         season_info: 시즌 정보
-        
+
     Returns:
         (진행도 퍼센트, 남은 시간 문자열, 상태 이모지, 상태 텍스트) 튜플
     """
     now = datetime.now(KST)
-    
+
     # 시즌이 아직 시작되지 않은 경우
     if now < season_info.start_date:
         time_until_start = season_info.start_date - now
@@ -271,20 +271,20 @@ def _calculate_season_progress(season_info: SeasonInfo) -> Tuple[float, str, str
     # 시즌이 이미 종료된 경우
     if now > season_info.end_date:
         return 100.0, "0일 0시간 0분 0초", SEASON_PROGRESS_EMOJIS['finished'], "시즌 종료됨"
-    
+
     # 진행도 계산
     total_duration = season_info.end_date - season_info.start_date
     elapsed_duration = now - season_info.start_date
     progress = min(max(elapsed_duration.total_seconds() / total_duration.total_seconds() * 100, 0), 100)
-    
+
     # 남은 시간 계산
     time_left = season_info.end_date - now
     days = time_left.days
     hours, remainder = divmod(time_left.seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
-    
+
     remaining_time = f"{days}일 {hours}시간 {minutes}분 {seconds}초"
-    
+
     # 진행도에 따른 상태 이모지
     if progress < 25:
         status_emoji = SEASON_PROGRESS_EMOJIS['early']
@@ -298,22 +298,22 @@ def _calculate_season_progress(season_info: SeasonInfo) -> Tuple[float, str, str
     else:
         status_emoji = SEASON_PROGRESS_EMOJIS['final']
         status_text = "시즌 마무리"
-    
+
     return progress, remaining_time, status_emoji, status_text
 
 def _create_progress_bar(progress: float, length: int = 20) -> str:
     """
     진행도 바를 생성합니다.
-    
+
     Args:
         progress: 진행도 (0-100)
         length: 바의 길이
-        
+
     Returns:
         진행도 바 문자열
     """
     filled_length = int(length * progress / 100)
-    
+
     # 진행도에 따른 다른 문자 사용
     if progress < 25:
         filled_char = '▱'
@@ -327,23 +327,23 @@ def _create_progress_bar(progress: float, length: int = 20) -> str:
     else:
         filled_char = '█'
         empty_char = '░'
-    
+
     return filled_char * filled_length + empty_char * (length - filled_length)
 
 
-def create_season_embed(season_info: Optional[SeasonInfo], client: ERClient) -> discord.Embed:
+def create_season_layout(season_info: Optional[SeasonInfo], client: ERClient) -> ui.LayoutView:
     """
-    시즌 정보 임베드를 생성합니다.
-    
+    시즌 정보 LayoutView를 생성합니다.
+
     Args:
         season_info: 시즌 정보
         client: Discord 클라이언트
-        
+
     Returns:
-        Discord 임베드 객체
+        LayoutView 객체
     """
     if not season_info:
-        return create_error_embed(
+        return create_error_layout(
             "시즌 정보 오류",
             "현재 시즌 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.",
             client
@@ -352,7 +352,7 @@ def create_season_embed(season_info: Optional[SeasonInfo], client: ERClient) -> 
     # 시즌 진행도 계산
     progress, remaining_time, status_emoji, status_text = _calculate_season_progress(season_info)
     progress_bar = _create_progress_bar(progress)
-    
+
     # 시즌 타입에 따른 이모지 선택
     if "EA" in season_info.name:
         season_emoji = SEASON_EMOJIS['ea']
@@ -361,95 +361,59 @@ def create_season_embed(season_info: Optional[SeasonInfo], client: ERClient) -> 
     else:
         season_emoji = SEASON_EMOJIS['regular']
 
-    embed = discord.Embed(
-        title=f"{season_emoji} {season_info.name}",
-        description=f"{status_emoji} **{status_text}** • {progress:.1f}% 진행",
-        color=config.embed_color
-    )
-    
     # 시즌 기간 정보 (간결한 형식)
     start_date_str = season_info.start_date.strftime("%m/%d %H시")
     end_date_str = season_info.end_date.strftime("%m/%d %H시")
-    
-    # 시즌 기간과 총 기간을 하나의 필드로 통합
+
+    # 시즌 기간과 총 기간
     total_duration = season_info.end_date - season_info.start_date
     total_days = total_duration.days
-    
+
     # 현재 진행 일수 계산
     now = datetime.now(KST)
     if now < season_info.start_date:
         elapsed_days = 0
-        progress_display = f"0/{total_days}일"
     elif now > season_info.end_date:
         elapsed_days = total_days
-        progress_display = f"{total_days}/{total_days}일"
     else:
         elapsed_days = (now - season_info.start_date).days
-        progress_display = f"{elapsed_days}/{total_days}일"
-    
-    embed.add_field(
-        name=f"{EMOJIS['calendar']} 시즌 기간",
-        value=f"**{start_date_str}** ~ **{end_date_str}**\n{progress_display}",
-        inline=True
+
+    # LayoutView 구성
+    view = ui.LayoutView(timeout=None)
+
+    container = ui.Container(
+        ui.TextDisplay(f"### {season_emoji} {season_info.name}\n{status_emoji} **{status_text}** • {progress:.1f}% 진행"),
+        ui.Separator(),
+        ui.TextDisplay(f"{EMOJIS['calendar']} **시즌 기간**\n**{start_date_str}** ~ **{end_date_str}** ({elapsed_days}/{total_days}일)"),
+        ui.TextDisplay(f"{EMOJIS['time']} **남은 시간**: {remaining_time}"),
+        ui.TextDisplay(f"{EMOJIS['trend']} **시즌 진행도**\n```{progress_bar} {progress:.1f}%```"),
+        ui.Separator(visible=False),
+        ui.TextDisplay(footer_text(client)),
+        accent_colour=discord.Colour.blurple(),
     )
+    view.add_item(container)
 
-    # 남은 시간 정보
-    embed.add_field(
-        name=f"{EMOJIS['time']} 남은 시간",
-        value=remaining_time,
-        inline=True
-    )
-    
-    # 빈 필드 (레이아웃 균형을 위해)
-    embed.add_field(
-        name="\u200b",  # 투명 문자
-        value="\u200b",
-        inline=True
-    )
-    
-    # 진행도 정보 (한 칸 아래로 이동)
-    progress_info = f"```{progress_bar} {progress:.1f}%```"
-    embed.add_field(
-        name=f"{EMOJIS['trend']} 시즌 진행도",
-        value=progress_info,
-        inline=False
-    )
-
-
-    # 푸터 추가
-    footer_text = f'몽실봇 • {len(client.guilds)}개의 서버에서 활동 중'
-    embed.set_footer(text=footer_text, icon_url=config.footer_icon)
-
-    return embed
-
-class SeasonView(discord.ui.View):
-    """시즌 정보에 대한 상호작용 버튼을 제공하는 뷰"""
-
-    def __init__(self, client: ERClient):
-        super().__init__(timeout=config.view_timeout_static)
-        self.client = client
-        
-        # 공식 사이트 버튼
-        official_button = discord.ui.Button(
+    # 링크 버튼 ActionRow
+    view.add_item(ui.ActionRow(
+        ui.Button(
             style=discord.ButtonStyle.link,
             label="공식 사이트",
             url="https://playeternalreturn.com/",
-            emoji=EMOJIS['web']
-        )
-        self.add_item(official_button)
-
-        # 패치 노트 버튼
-        patch_button = discord.ui.Button(
+            emoji=EMOJIS['web'],
+        ),
+        ui.Button(
             style=discord.ButtonStyle.link,
             label="패치 노트",
             url="https://game.naver.com/lounge/Black_Survival_Eternal_Return/board/17",
-            emoji=EMOJIS['patch_note']
-        )
-        self.add_item(patch_button)
+            emoji=EMOJIS['patch_note'],
+        ),
+    ))
+
+    return view
 
 class Season(commands.Cog):
     """시즌 관련 명령어를 처리하는 Cog"""
-    
+
     def __init__(self, client: ERClient):
         self.client = client
 
@@ -465,11 +429,10 @@ class Season(commands.Cog):
         await interaction.response.defer()
 
         season_info = await get_season_info()
-        embed = create_season_embed(season_info, self.client)
-        view = SeasonView(self.client)
+        layout = create_season_layout(season_info, self.client)
 
-        await interaction.followup.send(embed=embed, view=view)
+        await interaction.followup.send(view=layout)
 
 async def setup(client: ERClient):
     """명령어를 등록합니다."""
-    await client.add_cog(Season(client)) 
+    await client.add_cog(Season(client))

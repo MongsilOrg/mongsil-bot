@@ -1,13 +1,12 @@
 import discord
-from discord import Embed
+from discord import ui
 from discord.ext import commands
 from discord import app_commands
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from client import ERClient
 
 from commands.season import get_current_season_id, get_season_info
-from utils.config import config
-from utils.embeds import create_info_embed, create_error_embed, create_loading_embed
+from utils.layouts import create_error_layout, create_loading_layout, footer_text
 from utils.errors import handle_errors, validate_nickname, NotFoundError, APIError
 from utils.logging_config import get_logger
 from utils.character_names import get_character_name
@@ -18,8 +17,8 @@ from utils.emojis import EMOJIS
 logger = get_logger('랭크')
 
 
-def create_rank_embed(nickname: str, stats: Dict[str, Any], client: ERClient) -> tuple[Embed, None]:
-    """랭크 정보 임베드를 생성합니다."""
+def create_rank_layout(nickname: str, stats: Dict[str, Any], client: ERClient) -> ui.LayoutView:
+    """랭크 정보 LayoutView를 생성합니다."""
     # 기본 정보 파싱
     mmr = int(stats.get('mmr', 0))
     rank = int(stats.get('rank', 0))
@@ -35,93 +34,96 @@ def create_rank_embed(nickname: str, stats: Dict[str, Any], client: ERClient) ->
     top2_rate = float(stats.get('top2', 0.0))
     top3_rate = float(stats.get('top3', 0.0))
     top5_rate = float(stats.get('top5', 0.0))
-    
+
     # API에서 실제 닉네임 가져오기 (대소문자 구분 등)
     actual_nickname = stats.get('nickname', nickname)
-    
+
     # 계산이 필요한 통계
     win_rate = (wins / games * 100) if games > 0 else 0.0
     avg_team_kills = (team_kills / games) if games > 0 else 0.0
-    
+
     # 티어 정보 계산
     tier = TierSystem.get_tier(mmr, rank)
     tier_base = TierSystem.get_tier_base(tier)
     tier_score = mmr - tier_base
-    
+
     # 상위 백분율 계산
     top_percentage = (rank / rank_size * 100) if rank_size > 0 else 0.0
-    
+
     # 티어 표시 문자열 생성
     tier_display = f"{tier} - {tier_score:,} RP"
-    
-    embed = create_info_embed(
-        title=f"{EMOJIS['trophy']} {actual_nickname} - {mmr:,}RP",
-        description=f"{tier_display}\n#{rank:,}등 / {rank_size:,}명 중 (상위 {top_percentage:.2f}%)",
-        client=client,
-        add_icon=False
-    )
-    
-    # 티어 아이콘을 임베드의 썸네일로 설정
+
+    # 티어 아이콘 URL
     icon_name = TierSystem.get_tier_icon(tier)
     icon_url = f"https://mongsil.dev/w/src/{icon_name}.png"
-    embed.set_thumbnail(url=icon_url)
-    
-    # 첫 번째 줄: 승률 / 게임 수 / 평균 순위
-    embed.add_field(name="✨ 승률", value=f"{win_rate:.2f}%", inline=True)
-    embed.add_field(name="🎮 게임", value=f"{games:,}게임({wins}승)", inline=True)
-    embed.add_field(name="📊 평순", value=f"{avg_rank:.2f}위", inline=True)
-    
-    # 두 번째 줄: 평균 킬 / 평균 어시스트 / 평균 팀킬
-    embed.add_field(name="🗡️ 평킬", value=f"{avg_kills:.2f}", inline=True)
-    embed.add_field(name="🤝 어시", value=f"{avg_assists:.2f}", inline=True)
-    embed.add_field(name="⚔️ 팀킬", value=f"{avg_team_kills:.2f}", inline=True)
-    
-    # 세 번째 줄: 탑1 / 탑3 / 평균 사냥
-    embed.add_field(name="🥇 탑1", value=f"{top1_rate*100:.2f}%", inline=True)
-    embed.add_field(name="🥉 탑3", value=f"{top3_rate*100:.2f}%", inline=True)
-    embed.add_field(name="🎯 사냥", value=f"{avg_hunts:.2f}", inline=True)
-    
+
+    # LayoutView 구성
+    view = ui.LayoutView()
+
+    container_items = []
+
+    # 헤더 섹션: 닉네임 + 티어 정보 + 썸네일
+    header_text = (
+        f"## {EMOJIS['trophy']} {actual_nickname} - {mmr:,}RP\n"
+        f"{tier_display}\n"
+        f"#{rank:,}등 / {rank_size:,}명 중 (상위 {top_percentage:.2f}%)"
+    )
+    container_items.append(
+        ui.Section(
+            ui.TextDisplay(header_text),
+            accessory=ui.Thumbnail(media=icon_url)
+        )
+    )
+
+    container_items.append(ui.Separator())
+
+    # 통계 정보
+    stats_text = (
+        f"✨ **승률** {win_rate:.2f}% · 🎮 **게임** {games:,}판({wins}승) · 📊 **평순** {avg_rank:.2f}위\n"
+        f"🗡️ **평킬** {avg_kills:.2f} · 🤝 **어시** {avg_assists:.2f} · ⚔️ **팀킬** {avg_team_kills:.2f}\n"
+        f"🥇 **탑1** {top1_rate*100:.2f}% · 🥉 **탑3** {top3_rate*100:.2f}% · 🎯 **사냥** {avg_hunts:.2f}"
+    )
+    container_items.append(ui.TextDisplay(stats_text))
+
     # 캐릭터 통계 정보 추가 (상위 3개 캐릭터)
     character_stats = stats.get('characterStats', [])
     if character_stats:
-        # 게임 수 기준으로 정렬하여 상위 3개 선택
         top_characters = sorted(character_stats, key=lambda x: x.get('totalGames', 0), reverse=True)[:3]
-        
+
         character_info = []
         for char in top_characters:
             char_code = char.get('characterCode', 0)
             char_games = char.get('totalGames', 0)
             char_wins = char.get('wins', 0)
             char_win_rate = (char_wins / char_games * 100) if char_games > 0 else 0.0
-            
-            # 캐릭터 이름 매핑
+
             char_name = get_character_name(char_code)
             character_info.append(f"**{char_name}**: {char_games}게임 ({char_win_rate:.1f}%)")
-        
-        if character_info:
-            embed.add_field(
-                name="🎭 주요 캐릭터",
-                value="\n".join(character_info),
-                inline=False
-            )
-    
-    # 푸터 추가
-    footer_text = f'몽실봇 • {len(client.guilds)}개의 서버에서 활동 중'
-    embed.set_footer(text=footer_text, icon_url=config.footer_icon)
-    
-    return embed, None
 
-def create_dakgg_view(nickname: str) -> discord.ui.View:
-    """dak.gg 링크 버튼을 생성합니다."""
-    view = discord.ui.View()
-    button = discord.ui.Button(
-        style=discord.ButtonStyle.link,
-        label="DAK.GG 바로가기",
-        emoji=EMOJIS['chart'],
-        url=f"https://dak.gg/er/players/{nickname}"
+        if character_info:
+            container_items.append(ui.Separator())
+            container_items.append(ui.TextDisplay("### 🎭 주요 캐릭터\n" + "\n".join(character_info)))
+
+    # 푸터
+    container_items.append(ui.Separator(visible=False))
+    container_items.append(ui.TextDisplay(footer_text(client)))
+
+    view.add_item(ui.Container(*container_items, accent_colour=discord.Colour.blurple()))
+
+    # DAK.GG 링크 버튼
+    view.add_item(
+        ui.ActionRow(
+            ui.Button(
+                style=discord.ButtonStyle.link,
+                label="DAK.GG 바로가기",
+                emoji=EMOJIS['chart'],
+                url=f"https://dak.gg/er/players/{actual_nickname}"
+            )
+        )
     )
-    view.add_item(button)
+
     return view
+
 
 class Rank(commands.Cog):
     def __init__(self, client: ERClient):
@@ -136,18 +138,18 @@ class Rank(commands.Cog):
         try:
             validated_nickname = validate_nickname(닉네임)
         except Exception as e:
-            embed = create_error_embed("입력 오류", str(e), self.client)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            error_view = create_error_layout("입력 오류", str(e), self.client)
+            await interaction.response.send_message(view=error_view, ephemeral=True)
             return
 
         # 로딩 메시지 표시
-        loading_embed = create_loading_embed(
+        loading_view = create_loading_layout(
             "랭크 조회 중...",
             f"`{validated_nickname}`님의 랭크 정보를 불러오고 있습니다.",
             self.client
         )
-        await interaction.response.send_message(embed=loading_embed)
-        
+        await interaction.response.send_message(view=loading_view)
+
         # 시즌 정보 조회
         season_id = await get_current_season_id()
         if not season_id:
@@ -173,11 +175,9 @@ class Rank(commands.Cog):
                 f"'{validated_nickname}' 유저의 {season_name} 랭크 게임 기록이 없습니다."
             )
 
-        embed, _ = create_rank_embed(validated_nickname, stats, self.client)
-        view = create_dakgg_view(validated_nickname)
-        await interaction.edit_original_response(embed=embed, view=view)
+        view = create_rank_layout(validated_nickname, stats, self.client)
+        await interaction.edit_original_response(view=view, embeds=[], attachments=[])
 
 async def setup(client: ERClient):
     """명령어를 등록합니다."""
     await client.add_cog(Rank(client))
-

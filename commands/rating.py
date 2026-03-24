@@ -1,5 +1,5 @@
 import discord
-from discord import Embed
+from discord import ui
 from discord.ext import commands
 from discord import app_commands
 from typing import Optional, Dict, Tuple
@@ -7,7 +7,7 @@ from client import ERClient
 from commands.season import get_current_season_id, get_season_info
 
 from utils.config import config
-from utils.embeds import create_info_embed, create_error_embed
+from utils.layouts import create_error_layout, footer_text
 from utils.errors import handle_errors, APIError
 from utils.logging_config import get_logger
 from utils.emojis import EMOJIS
@@ -19,7 +19,7 @@ async def fetch_top_ranks(client: ERClient, season_id: int) -> Optional[list]:
     try:
         # KR 서버 코드 10을 하드코딩하고 한 번의 호출로 1000등까지 데이터 가져오기
         url = f"{config.api_url}/rank/top/{season_id}/3/10"
-        
+
         data = await client.api_client.get(url, use_cache=False)
         if data and data.get('code') == 200:
             top_ranks = data.get('topRanks', [])
@@ -37,10 +37,10 @@ async def fetch_rating_info(client: ERClient, season_id: int) -> Tuple[Optional[
         top_ranks = await fetch_top_ranks(client, season_id)
         if not top_ranks:
             return None, None
-        
+
         rank_300 = None
         rank_1000 = None
-        
+
         # 가져온 데이터에서 300등과 1000등을 찾기
         # API 응답이 순위별로 정렬되어 있다고 가정하고 효율적으로 검색
         for user in top_ranks:
@@ -49,59 +49,60 @@ async def fetch_rating_info(client: ERClient, season_id: int) -> Tuple[Optional[
                 rank_300 = user
             elif user_rank == 1000:
                 rank_1000 = user
-            
+
             # 둘 다 찾았으면 루프 종료
             if rank_300 and rank_1000:
                 break
-        
+
         return rank_300, rank_1000
     except Exception as e:
         logger.error(f"레이팅 정보 조회 중 오류 발생: {e}", exc_info=True)
         return None, None
 
-def create_rating_embed(rank_300: Optional[Dict], rank_1000: Optional[Dict], client: ERClient, season_name: str) -> Embed:
-    """레이팅 정보 임베드를 생성합니다."""
-    embed = Embed(
-        title=f"{EMOJIS['trophy']} {season_name} KR 레이팅 컷",
-        color=config.embed_color
-    )
+def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], client: ERClient, season_name: str) -> ui.LayoutView:
+    """레이팅 정보 LayoutView를 생성합니다."""
+    view = ui.LayoutView()
+
+    container_items = []
+
+    # 제목
+    container_items.append(ui.TextDisplay(f"### {EMOJIS['trophy']} {season_name} KR 레이팅 컷"))
+
+    container_items.append(ui.Separator())
 
     # 300등 정보
     if rank_300:
         mmr_300 = rank_300.get('mmr', 0)
         nickname_300 = rank_300.get('nickname', '알 수 없음')
-        embed.add_field(
-            name=f"{EMOJIS['crown']} 이터니티 컷 (300등)",
-            value=f"```닉네임: {nickname_300}\nMMR: {mmr_300:,}```",
-            inline=False
-        )
+        container_items.append(ui.TextDisplay(
+            f"👑 **이터니티 컷 (300등)**\n닉네임: {nickname_300}\nMMR: {mmr_300:,}"
+        ))
     else:
-        embed.add_field(
-            name=f"{EMOJIS['crown']} 이터니티 컷 (300등)",
-            value="```정보를 가져올 수 없습니다.```",
-            inline=False
-        )
+        container_items.append(ui.TextDisplay(
+            "👑 **이터니티 컷 (300등)**\n정보를 가져올 수 없습니다."
+        ))
+
+    container_items.append(ui.Separator())
 
     # 1000등 정보
     if rank_1000:
         mmr_1000 = rank_1000.get('mmr', 0)
         nickname_1000 = rank_1000.get('nickname', '알 수 없음')
-        embed.add_field(
-            name=f"{EMOJIS['sparkles']} 데미갓 컷 (1000등)",
-            value=f"```닉네임: {nickname_1000}\nMMR: {mmr_1000:,}```",
-            inline=False
-        )
+        container_items.append(ui.TextDisplay(
+            f"✨ **데미갓 컷 (1000등)**\n닉네임: {nickname_1000}\nMMR: {mmr_1000:,}"
+        ))
     else:
-        embed.add_field(
-            name=f"{EMOJIS['sparkles']} 데미갓 컷 (1000등)",
-            value="```정보를 가져올 수 없습니다.```",
-            inline=False
-        )
+        container_items.append(ui.TextDisplay(
+            "✨ **데미갓 컷 (1000등)**\n정보를 가져올 수 없습니다."
+        ))
 
-    footer_text = f'몽실봇 • {len(client.guilds)}개의 서버에서 활동 중'
-    embed.set_footer(text=footer_text, icon_url=config.footer_icon)
-    
-    return embed
+    # 푸터
+    container_items.append(ui.Separator(visible=False))
+    container_items.append(ui.TextDisplay(footer_text(client)))
+
+    view.add_item(ui.Container(*container_items, accent_colour=discord.Colour.blurple()))
+
+    return view
 
 
 class Rating(commands.Cog):
@@ -116,12 +117,12 @@ class Rating(commands.Cog):
 
         season_id = await get_current_season_id()
         if not season_id:
-            error_embed = create_error_embed(
+            error_view = create_error_layout(
                 "시즌 정보 오류",
                 "현재 시즌 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.",
                 self.client
             )
-            await interaction.followup.send(embed=error_embed, ephemeral=True)
+            await interaction.followup.send(view=error_view, ephemeral=True)
             return
 
         # 시즌 정보 가져오기
@@ -132,18 +133,18 @@ class Rating(commands.Cog):
         rank_300, rank_1000 = await fetch_rating_info(self.client, season_id)
 
         if not rank_300 and not rank_1000:
-            error_embed = create_error_embed(
+            error_view = create_error_layout(
                 "레이팅 정보 없음",
                 f"{season_name}의 레이팅 정보를 가져올 수 없습니다.\n"
                 "시즌이 아직 시작되지 않았거나 API에 문제가 있을 수 있습니다.",
                 self.client
             )
-            await interaction.followup.send(embed=error_embed, ephemeral=True)
+            await interaction.followup.send(view=error_view, ephemeral=True)
             return
 
-        embed = create_rating_embed(rank_300, rank_1000, self.client, season_name)
-        await interaction.followup.send(embed=embed)
+        view = create_rating_layout(rank_300, rank_1000, self.client, season_name)
+        await interaction.followup.send(view=view)
 
 async def setup(client: ERClient):
     """명령어를 등록합니다."""
-    await client.add_cog(Rating(client)) 
+    await client.add_cog(Rating(client))

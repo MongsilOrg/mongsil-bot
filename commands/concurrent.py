@@ -1,4 +1,3 @@
-import asyncio
 import os
 import pickle
 from collections import deque
@@ -6,13 +5,14 @@ from datetime import datetime, timedelta
 from typing import NamedTuple, Optional
 
 import discord
+from discord import ui
 from discord import app_commands
 from discord.ext import commands, tasks
 
 from client import ERClient
 from utils.api_client import api_client
 from utils.config import config
-from utils.embeds import create_error_embed, create_info_embed
+from utils.layouts import create_error_layout, footer_text
 from utils.errors import handle_errors
 from utils.logging_config import get_logger
 from utils.emojis import EMOJIS
@@ -24,21 +24,21 @@ STEAM_API_URL = 'https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrent
 
 class ConcurrentData:
     """동시접속자 데이터 관리 클래스"""
-    
+
     def __init__(self, data_dir: str = 'data'):
         # deque 사용으로 메모리 효율성 향상 (24시간 * 60분 = 1440개 최대)
         self.data = deque(maxlen=1440)
         self.data_dir = data_dir
         self.file_path = os.path.join(data_dir, 'concurrent_data.pkl')
-        
+
         # 데이터 디렉토리 생성
         os.makedirs(data_dir, exist_ok=True)
-        
+
     def add_data(self, time: datetime, count: int):
         """새로운 동시접속자 데이터를 추가합니다."""
         # 24시간이 지난 데이터는 deque가 자동으로 제거
         self.data.append((time, count))
-    
+
     def get_statistics(self):
         """통계를 계산합니다 (필요할 때만 호출)"""
         if not self.data:
@@ -47,30 +47,30 @@ class ConcurrentData:
                 'max_time': None,
                 'data_count': 0
             }
-        
+
         # 최대값 계산
         max_data = max(self.data, key=lambda x: (x[1], x[0]))
-        
+
         return {
             'max_count': max_data[1],
             'max_time': max_data[0],
             'data_count': len(self.data)
         }
-    
+
     def save_to_file(self):
         """pickle로 데이터를 저장합니다."""
         try:
             # 임시 파일로 먼저 저장한 후 원자적 이동
             temp_file_path = f"{self.file_path}.tmp"
-            
+
             with open(temp_file_path, 'wb') as f:
                 pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
-            
+
             # 원자적 파일 이동 (os.replace는 대상 파일 존재 여부와 무관하게 동작)
             os.replace(temp_file_path, self.file_path)
-            
+
             return True
-            
+
         except (OSError, IOError) as e:
             logger.error(f"동접 데이터 저장 중 I/O 오류: {e}")
             # 임시 파일 정리
@@ -83,12 +83,12 @@ class ConcurrentData:
         except Exception as e:
             logger.error(f"동접 데이터 저장 중 예상치 못한 오류: {e}")
             return False
-    
+
     @classmethod
     def load_from_file(cls, data_dir: str = 'data'):
         """pickle에서 데이터를 로드합니다."""
         file_path = os.path.join(data_dir, 'concurrent_data.pkl')
-        
+
         if os.path.exists(file_path):
             try:
                 with open(file_path, 'rb') as f:
@@ -98,7 +98,7 @@ class ConcurrentData:
                 logger.warning(f"파일 로드 실패: {e}")
             except Exception as e:
                 logger.error(f"예상치 못한 파일 로드 오류: {e}")
-        
+
         # 파일이 없거나 로드 실패 시 새 인스턴스 생성
         return cls(data_dir)
 
@@ -114,41 +114,41 @@ async def get_current_player_count() -> Optional[int]:
         if not config.steam_api_key:
             logger.warning("STEAM_API_KEY가 설정되지 않았습니다.")
             return None
-            
+
         params = {
             'appid': config.appid_erbs,
             'key': config.steam_api_key
         }
-        
+
         data = await api_client.get(STEAM_API_URL, params=params, use_cache=False)
-        
+
         if not data:
             logger.error("Steam API 응답이 비어있습니다.")
             return None
-            
+
         # API 응답 검증
         if 'response' not in data:
             logger.error("Steam API 응답에 'response' 필드가 없습니다.")
             return None
-            
+
         response = data['response']
-        
+
         # result 필드 검증 (1이 성공을 의미)
         if response.get('result') != 1:
             logger.error(f"Steam API 오류: result={response.get('result')}")
             return None
-            
+
         if 'player_count' not in response:
             logger.error("Steam API 응답에 'player_count' 필드가 없습니다.")
             return None
-            
+
         player_count = response['player_count']
         if not isinstance(player_count, int) or player_count < 0:
             logger.error(f"잘못된 플레이어 수 값: {player_count}")
             return None
-            
+
         return player_count
-        
+
     except Exception as e:
         logger.error(f"플레이어 수 조회 중 오류 발생: {e}", exc_info=True)
         return None
@@ -159,81 +159,55 @@ async def get_player_count(client: ERClient) -> Optional[PlayerCount]:
         current_count = await get_current_player_count()
         if current_count is None:
             return None
-            
+
         return PlayerCount(current=current_count)
     except Exception as e:
         logger.error(f"플레이어 수 조회 중 오류 발생: {e}", exc_info=True)
         return None
 
-def create_concurrent_embed(count_info: Optional[PlayerCount], client: ERClient) -> discord.Embed:
-    """동시 접속자 수 임베드를 생성합니다."""
+def create_concurrent_layout(count_info: Optional[PlayerCount], client: ERClient) -> ui.LayoutView:
+    """동시 접속자 수 LayoutView를 생성합니다."""
     if not count_info:
-        return create_error_embed(
+        return create_error_layout(
             "동시 접속자 수 조회 실패",
             "현재 동시 접속자 수를 가져올 수 없습니다.\nSteam API 서버에 문제가 있을 수 있습니다.",
             client
         )
 
-    embed = create_info_embed(
-        title=f"{EMOJIS['users']} 이터널 리턴 현재 동시 접속자",
-        description="",
-        client=client,
-        add_icon=False
-    )
-    
-    # 현재 동접 정보
     current_time_str = datetime.now().strftime("%H시 %M분")
-    embed.add_field(
-        name=f"{EMOJIS['chart']} 현재 동시 접속자",
-        value=f"```\n{count_info.current:,}명\n```",
-        inline=True
-    )
-    
-    # 조회 시각
-    embed.add_field(
-        name=f"{EMOJIS['clock']} 조회 시각",
-        value=f"```\n{current_time_str}\n```",
-        inline=True
-    )
-    
-    # 빈 필드 추가로 줄바꿈
-    embed.add_field(name="\u200b", value="\u200b", inline=True)
-    
-    # 24시간 통계 표시
+
+    # 24시간 통계
     stats = concurrent_data.get_statistics()
-    
-    if stats['data_count'] > 0:
-        # 최대 동접자 수 정보
-        if stats['max_time']:
-            max_time_str = stats['max_time'].strftime("%H시 %M분")
-            
-            embed.add_field(
-                name=f"{EMOJIS['trophy']} 24시간 최대 동접",
-                value=f"```\n{stats['max_count']:,}명\n```",
-                inline=True
-            )
-            # 최대 기록 시각
-            embed.add_field(
-                name=f"{EMOJIS['clock']} 기록 시각",
-                value=f"```\n{max_time_str}\n```",
-                inline=True
-            )
-            # 빈 필드 추가로 정렬 유지
-            embed.add_field(name="\u200b", value="\u200b", inline=True)
-        
-    else:
-        # 데이터가 없는 경우 안내 메시지
-        embed.add_field(
-            name=f"{EMOJIS['trend']} 24시간 통계",
-            value="```아직 충분한 데이터가 수집되지 않았습니다.\n1분마다 자동으로 데이터를 수집합니다.```",
-            inline=False
-        )
 
-    # 푸터 추가
-    footer_text = f'몽실봇 • {len(client.guilds)}개의 서버에서 활동 중'
-    embed.set_footer(text=footer_text, icon_url=config.footer_icon)
+    # Container 내부 아이템 구성
+    items = [
+        ui.TextDisplay(f"### {EMOJIS['users']} 이터널 리턴 현재 동시 접속자"),
+        ui.Separator(),
+        ui.TextDisplay(f"{EMOJIS['chart']} **현재 동시 접속자**: **{count_info.current:,}명** · {EMOJIS['clock']} **조회 시각**: {current_time_str}"),
+    ]
 
-    return embed
+    if stats['data_count'] > 0 and stats['max_time']:
+        max_time_str = stats['max_time'].strftime("%H시 %M분")
+        items.append(ui.Separator())
+        items.append(ui.TextDisplay(f"{EMOJIS['trophy']} **24시간 최대 동접**: **{stats['max_count']:,}명** · {EMOJIS['clock']} **기록 시각**: {max_time_str}"))
+
+    items.append(ui.Separator(visible=False))
+    items.append(ui.TextDisplay(footer_text(client)))
+
+    view = ui.LayoutView(timeout=None)
+    view.add_item(ui.Container(*items, accent_colour=discord.Colour.blurple()))
+
+    # SteamDB 링크 버튼
+    view.add_item(ui.ActionRow(
+        ui.Button(
+            style=discord.ButtonStyle.link,
+            label="SteamDB 바로가기",
+            emoji=EMOJIS['chart'],
+            url="https://steamdb.info/app/1049590/graphs/",
+        ),
+    ))
+
+    return view
 
 class Concurrent(commands.Cog):
     def __init__(self, client: ERClient):
@@ -255,38 +229,28 @@ class Concurrent(commands.Cog):
 
         # Steam API 키 확인
         if not config.steam_api_key:
-            embed = create_error_embed(
+            layout = create_error_layout(
                 "Steam API 키 없음",
                 "Steam API 키가 설정되지 않아 동시 접속자 수를 조회할 수 없습니다.\n관리자에게 문의해주세요.",
                 self.client
             )
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            await interaction.followup.send(view=layout, ephemeral=True)
             return
 
         count_info = await get_player_count(self.client)
 
         if not count_info:
-            embed = create_error_embed(
+            layout = create_error_layout(
                 "데이터 조회 실패",
                 "현재 동시 접속자 수를 가져올 수 없습니다.\nSteam API 서버에 문제가 있을 수 있습니다.\n잠시 후 다시 시도해주세요.",
                 self.client
             )
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            await interaction.followup.send(view=layout, ephemeral=True)
             return
 
-        embed = create_concurrent_embed(count_info, self.client)
+        layout = create_concurrent_layout(count_info, self.client)
 
-        # SteamDB 링크 버튼 생성
-        view = discord.ui.View()
-        button = discord.ui.Button(
-            style=discord.ButtonStyle.link,
-            label="SteamDB 바로가기",
-            emoji=EMOJIS['chart'],
-            url="https://steamdb.info/app/1049590/graphs/"
-        )
-        view.add_item(button)
-
-        await interaction.followup.send(embed=embed, view=view)
+        await interaction.followup.send(view=layout)
 
     @tasks.loop(minutes=1)
     async def save_concurrent_data(self):
@@ -296,12 +260,12 @@ class Concurrent(commands.Cog):
             if not config.steam_api_key:
                 logger.warning("STEAM_API_KEY가 설정되지 않아 동시접속자 데이터 수집을 건너뜁니다.")
                 return
-                
+
             count = await get_current_player_count()
             if count is not None:
                 current_time = datetime.now()
                 concurrent_data.add_data(current_time, count)
-                
+
                 # 5분마다만 파일에 저장 (I/O 부하 감소)
                 if len(concurrent_data.data) % 5 == 0:
                     concurrent_data.save_to_file()
@@ -309,7 +273,7 @@ class Concurrent(commands.Cog):
                 logger.warning("동시접속자 수를 가져올 수 없어 수집을 건너뜁니다.")
         except Exception as e:
             logger.error(f"동접 데이터 수집 중 오류 발생: {e}", exc_info=True)
-    
+
     @save_concurrent_data.before_loop
     async def before_save_concurrent_data(self):
         """태스크 시작 전 대기"""
