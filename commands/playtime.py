@@ -1,14 +1,12 @@
 import discord
 from datetime import datetime, timedelta
-from typing import Dict, List, Tuple, Optional, NamedTuple
+from typing import Dict, List, Optional, NamedTuple
 from client import ERClient
-from discord import app_commands
+from discord import app_commands, ui
 from discord.ext import commands
-import asyncio
-
 from utils.config import config
-from utils.embeds import create_info_embed, create_error_embed
-from utils.errors import handle_errors, validate_nickname, NotFoundError, APIError
+from utils.layouts import create_error_layout, create_loading_layout, footer_text
+from utils.errors import handle_errors, validate_nickname
 from utils.logging_config import get_logger
 from utils.emojis import EMOJIS
 
@@ -17,7 +15,7 @@ logger = get_logger('플탐')
 class GameStats(NamedTuple):
     """게임 통계 정보를 저장하는 네임드 튜플"""
     date: datetime.date
-    duration: int
+    play_time: int
     character_code: str
     rank: int
     game_mode: str
@@ -58,7 +56,7 @@ async def get_user_games(client, user_id: str, start_date: datetime.date) -> Lis
             data = await client.api_client.get(url, use_cache=True)
             if data:
                 current_games = data.get('userGames', data.get('games', []))
-                
+
                 # 날짜 체크 및 게임 추가
                 for game in current_games:
                     try:
@@ -66,13 +64,13 @@ async def get_user_games(client, user_id: str, start_date: datetime.date) -> Lis
                             game['startDtm'],
                             "%Y-%m-%dT%H:%M:%S.%f%z"
                         ).date()
-                        
+
                         if game_date < start_date:
                             return games
-                        
+
                         games.append(GameStats(
                             date=game_date,
-                            duration=game.get('duration', 0),
+                            play_time=game.get('playTime', 0),
                             character_code=game.get('characterCode', ''),
                             rank=game.get('gameRank', 0),
                             game_mode=game.get('matchingMode', '')
@@ -96,16 +94,16 @@ async def get_user_games(client, user_id: str, start_date: datetime.date) -> Lis
 def calculate_play_time_stats(games: List[GameStats], dates: List[datetime.date]) -> PlayTimeStats:
     """플레이 타임 통계를 계산합니다."""
     daily_stats = {date: 0 for date in dates}
-    
+
     # 게임별 플레이 시간 집계
     for game in games:
         if game.date in daily_stats:
-            daily_stats[game.date] += game.duration
+            daily_stats[game.date] += game.play_time
 
     total_seconds = sum(daily_stats.values())
     games_played = len(games)
     avg_duration = total_seconds / games_played if games_played > 0 else 0
-    
+
     # 가장 많이 플레이한 날 찾기
     if daily_stats and any(time > 0 for time in daily_stats.values()):
         most_played_date = max(daily_stats.items(), key=lambda x: x[1])[0]
@@ -127,7 +125,7 @@ def format_time(seconds: int) -> str:
     """초 단위 시간을 HH:MM:SS 형식으로 변환합니다."""
     if seconds < 0:
         return "00:00:00"
-    
+
     hours, remainder = divmod(seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
@@ -162,69 +160,48 @@ def get_activity_level(total_seconds: int) -> str:
     else:  # 35시간 이상 (일일 평균 5시간 이상)
         return "🚀 전설"
 
-def create_playtime_embed(client, nickname: str, stats: PlayTimeStats) -> discord.Embed:
-    """플레이 타임 임베드를 생성합니다."""
-    # 활동 레벨 결정
+def create_playtime_layout(client, nickname: str, stats: PlayTimeStats) -> ui.LayoutView:
+    """플레이 타임 LayoutView를 생성합니다."""
     activity_level = get_activity_level(stats.total_seconds)
-    
-    # 플레이한 날짜 수 계산
-    play_days = sum(1 for time in stats.daily_stats.values() if time > 0)
-    
-    # 임베드 생성
-    embed = discord.Embed(
-        title=f"{EMOJIS['fire']} {nickname}님의 플레이 타임",
-        description=f"{activity_level} • 최근 7일간 게임 활동",
-        color=config.embed_color
-    )
-    
-    # 메인 통계 (2개 필드)
-    embed.add_field(
-        name=f"{EMOJIS['total']} **총 플레이 시간**",
-        value=f"`{format_duration(stats.total_seconds)}` • {stats.games_played:,}판",
-        inline=True
-    )
-    
-    # 일일 평균 계산 (7일 기준만)
     daily_avg = stats.total_seconds // 7
-    
-    embed.add_field(
-        name=f"{EMOJIS['average']} **일일 평균**",
-        value=f"`{format_duration(daily_avg)}`",
-        inline=True
-    )
-    
-    # 일일 플레이 타임 차트 (시각적 표현)
     daily_chart = create_daily_chart(stats.daily_stats)
-    embed.add_field(
-        name=f"{EMOJIS['chart']} **일일 플레이 타임**",
-        value=daily_chart,
-        inline=False
-    )
-    
-    # 추가 통계 정보
+
+    view = ui.LayoutView()
+    container = ui.Container(accent_colour=discord.Colour.blurple())
+    container.add_item(ui.TextDisplay(f"### 🔥 {nickname}님의 플레이 타임\n{activity_level} • 최근 7일간 게임 활동"))
+    container.add_item(ui.Separator())
+    container.add_item(ui.TextDisplay(f"📊 **총 플레이 시간**: **{format_duration(stats.total_seconds)}** • {stats.games_played:,}판 · 📈 **일일 평균**: **{format_duration(daily_avg)}**"))
+    container.add_item(ui.Separator())
+    container.add_item(ui.TextDisplay(f"### 📊 일일 플레이 타임\n{daily_chart}"))
+
     if stats.games_played > 0:
         avg_game_duration = stats.total_seconds / stats.games_played
-        embed.add_field(
-            name=f"{EMOJIS['clock']} **게임 통계**",
-            value=f"평균 게임 시간: `{format_duration(int(avg_game_duration))}`",
-            inline=True
-        )
-    
-    # 푸터 추가
-    footer_text = f'몽실봇 • {len(client.guilds)}개의 서버에서 활동 중'
-    embed.set_footer(text=footer_text, icon_url=config.footer_icon)
-    
-    return embed
+        container.add_item(ui.TextDisplay(f"🕐 **평균 게임 시간**: **{format_duration(int(avg_game_duration))}**"))
+
+    container.add_item(ui.Separator(visible=False))
+    container.add_item(ui.TextDisplay(footer_text(client)))
+    view.add_item(container)
+
+    # DAK.GG 링크 버튼
+    dakgg_button = ui.Button(
+        style=discord.ButtonStyle.link,
+        label="DAK.GG 바로가기",
+        emoji=EMOJIS['chart'],
+        url=f"https://dak.gg/er/players/{nickname}"
+    )
+    view.add_item(ui.ActionRow(dakgg_button))
+
+    return view
 
 def create_daily_chart(daily_stats: Dict[datetime.date, int]) -> str:
     """일일 플레이 타임을 시각적 차트로 표현합니다."""
     chart_lines = []
     max_time = max(daily_stats.values()) if daily_stats else 1
-    
+
     for date, play_time in sorted(daily_stats.items()):
         weekday = WEEKDAYS[date.weekday()]
         date_str = f"{date.strftime('%m/%d')} ({weekday})"
-        
+
         if play_time == 0:
             chart_lines.append(f"`{date_str}` ░░░░░░░░░░ `-`")
         else:
@@ -233,24 +210,8 @@ def create_daily_chart(daily_stats: Dict[datetime.date, int]) -> str:
             bar = "█" * progress + "░" * (10 - progress)
             time_str = format_duration(play_time)
             chart_lines.append(f"`{date_str}` {bar} `{time_str}`")
-    
+
     return "\n".join(chart_lines)
-
-class PlaytimeView(discord.ui.View):
-    """플레이 타임 조회용 인터랙티브 뷰"""
-
-    def __init__(self, nickname: str):
-        super().__init__(timeout=config.view_timeout_static)
-        self.nickname = nickname
-        
-        # DAK.GG 링크 버튼 추가
-        dakgg_button = discord.ui.Button(
-            style=discord.ButtonStyle.link,
-            label="DAK.GG 바로가기",
-            emoji=EMOJIS['chart'],
-            url=f"https://dak.gg/er/players/{nickname}"
-        )
-        self.add_item(dakgg_button)
 
 async def get_playtime_info(client: ERClient, nickname: str) -> Optional[PlayTimeStats]:
     """플레이어의 플레이 타임 정보를 가져옵니다."""
@@ -293,38 +254,51 @@ class Playtime(commands.Cog):
         validated_nickname = validate_nickname(닉네임)
 
         # 로딩 메시지 표시
-        loading_embed = discord.Embed(
-            title=f"{EMOJIS['loading']} 플레이 타임 조회 중...",
-            description=f"`{validated_nickname}`님의 게임 데이터를 분석하고 있습니다.",
-            color=config.embed_color
+        loading_view = create_loading_layout(
+            "플레이 타임 조회 중...",
+            f"`{validated_nickname}`님의 게임 데이터를 분석하고 있습니다.",
+            self.client
         )
-        await interaction.response.send_message(embed=loading_embed)
+        await interaction.response.send_message(view=loading_view)
 
         # 플레이 타임 정보 조회
         stats = await get_playtime_info(self.client, validated_nickname)
         if not stats:
-            # 데이터가 없는 경우 친화적인 메시지
-            no_data_embed = discord.Embed(
-                title=f"😴 {validated_nickname}님의 플레이 기록",
-                description="최근 7일간 플레이 기록이 없습니다.\n\n💡 **다음과 같은 이유일 수 있습니다:**\n• 최근에 게임을 하지 않았음\n• 닉네임이 정확하지 않음\n• 게임 데이터가 아직 업데이트되지 않음",
-                color=config.embed_color
-            )
-            no_data_embed.add_field(
-                name="🔍 **확인 방법**",
-                value=f"• [DAK.GG](https://dak.gg/er/players/{validated_nickname})에서 닉네임 확인\n• 게임 내에서 최근 플레이 기록 확인",
-                inline=False
-            )
-            no_data_embed.set_footer(text=f"몽실봇 • {len(self.client.guilds)}개의 서버에서 활동 중")
+            # 데이터 없음 LayoutView
+            no_data_view = ui.LayoutView()
+            container = ui.Container(accent_colour=discord.Colour.blurple())
+            container.add_item(ui.TextDisplay(
+                f"### 😴 {validated_nickname}님의 플레이 기록\n"
+                "최근 7일간 플레이 기록이 없습니다.\n\n"
+                "💡 **다음과 같은 이유일 수 있습니다:**\n"
+                "• 최근에 게임을 하지 않았음\n"
+                "• 닉네임이 정확하지 않음\n"
+                "• 게임 데이터가 아직 업데이트되지 않음"
+            ))
+            container.add_item(ui.TextDisplay(
+                f"🔍 **확인 방법**\n"
+                f"• [DAK.GG](https://dak.gg/er/players/{validated_nickname})에서 닉네임 확인\n"
+                "• 게임 내에서 최근 플레이 기록 확인"
+            ))
+            container.add_item(ui.Separator(visible=False))
+            container.add_item(ui.TextDisplay(footer_text(self.client)))
+            no_data_view.add_item(container)
 
-            view = PlaytimeView(validated_nickname)
-            await interaction.edit_original_response(embed=no_data_embed, view=view)
+            dakgg_button = ui.Button(
+                style=discord.ButtonStyle.link,
+                label="DAK.GG 바로가기",
+                emoji=EMOJIS['chart'],
+                url=f"https://dak.gg/er/players/{validated_nickname}"
+            )
+            no_data_view.add_item(ui.ActionRow(dakgg_button))
+
+            await interaction.edit_original_response(view=no_data_view)
             return
 
         # 성공적인 결과 표시
-        embed = create_playtime_embed(self.client, validated_nickname, stats)
-        view = PlaytimeView(validated_nickname)
-        await interaction.edit_original_response(embed=embed, view=view)
+        view = create_playtime_layout(self.client, validated_nickname, stats)
+        await interaction.edit_original_response(view=view)
 
 async def setup(client: ERClient):
     """명령어를 등록합니다."""
-    await client.add_cog(Playtime(client)) 
+    await client.add_cog(Playtime(client))
