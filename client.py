@@ -1,5 +1,5 @@
 import discord
-from discord import Embed, Interaction
+from discord import Interaction
 from discord.ext import commands, tasks
 from discord import app_commands
 from typing import Optional
@@ -8,6 +8,7 @@ import os
 import asyncio
 
 from utils.config import config
+from utils.layouts import create_error_layout
 from utils.logging_config import get_logger
 from utils.api_client import api_client
 
@@ -122,10 +123,11 @@ class ERClient(commands.Bot):
         logger.error(f"명령어 실행 오류: {error}", exc_info=True)
 
         try:
+            layout = create_error_layout("오류", error_message)
             if not interaction.response.is_done():
-                await interaction.response.send_message(error_message, ephemeral=True)
+                await interaction.response.send_message(view=layout, ephemeral=True)
             else:
-                await interaction.followup.send(error_message, ephemeral=True)
+                await interaction.followup.send(view=layout, ephemeral=True)
         except Exception:
             pass
 
