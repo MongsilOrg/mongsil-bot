@@ -4,11 +4,9 @@ from discord.ext import commands
 from client import ERClient
 from typing import Optional
 
-from utils.config import config
-from utils.embeds import create_error_embed
 from utils.errors import handle_errors
 from utils.logging_config import get_logger
-from utils.animal_utils import AnimalImage, fetch_animal_image, download_image, create_animal_embed, create_animal_error_embed
+from utils.animal_utils import AnimalImage, fetch_animal_image, download_image, create_animal_error_layout
 
 logger = get_logger('강아지')
 
@@ -44,14 +42,14 @@ class Dog(commands.Cog):
 
         dog_info = await get_dog_info()
         if not dog_info:
-            embed = create_animal_error_embed("not_found", "강아지", self.client)
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            layout = create_animal_error_layout("not_found", "강아지", self.client)
+            await interaction.followup.send(view=layout, ephemeral=True)
             return
 
         image_data = await download_image(dog_info.url)
         if not image_data:
-            embed = create_animal_error_embed("download_failed", "강아지", self.client)
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            layout = create_animal_error_layout("download_failed", "강아지", self.client)
+            await interaction.followup.send(view=layout, ephemeral=True)
             return
 
         filename = "dog.jpg"
