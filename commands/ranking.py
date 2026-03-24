@@ -1,25 +1,22 @@
 import discord
 from discord.ext import commands
-from discord import app_commands
+from discord import app_commands, ui
 from typing import List, Dict, Any, NamedTuple, Optional
 from client import ERClient
 from commands.season import get_current_season_id
 import math
-from datetime import timedelta
 
 from utils.config import config
-from utils.embeds import create_info_embed, create_error_embed, create_loading_embed
-from utils.errors import handle_errors, APIError
+from utils.layouts import create_error_layout, create_loading_layout, footer_text
+from utils.errors import handle_errors
 from utils.logging_config import get_logger
-from utils.ranking_image_generator import create_ranking_embed_with_image
+from utils.ranking_image_generator import create_ranking_image
 from utils.rank_helpers import fetch_user_stats_solo, fetch_ranking_data
-from utils.tier_system import TierSystem
 
 logger = get_logger('랭킹')
 
 RANKS_PER_PAGE = 10  # 페이지당 10명씩 표시
 TOTAL_RANKS = 100
-CACHE_TTL = timedelta(minutes=5)  # 캐시 유효 시간: 5분
 
 class RankUser(NamedTuple):
     """랭킹 유저 정보를 저장하는 네임드 튜플"""
@@ -33,7 +30,7 @@ class RankUser(NamedTuple):
     avg_kills: float = 0.0
     character_stats: list = None
 
-class PaginationView(discord.ui.View):
+class PaginationView(ui.LayoutView):
     def __init__(self, client: ERClient, season_id: int, total_pages: int, cached_users: List[List[RankUser]], season_name: str):
         super().__init__(timeout=config.view_timeout_interactive)
         self.client = client
@@ -43,31 +40,43 @@ class PaginationView(discord.ui.View):
         self.cached_users = cached_users  # 모든 페이지의 유저 데이터 캐시
         self.season_name = season_name
 
-        self.update_buttons()
+        self.build_layout()
 
-    def update_buttons(self):
-        """버튼 상태를 업데이트합니다."""
-        self.prev_button.disabled = self.current_page == 1
-        self.next_button.disabled = self.current_page == self.total_pages
-        self.page_indicator.label = f"{self.current_page}/{self.total_pages}"
+    def build_layout(self):
+        """현재 페이지 기준으로 레이아웃을 빌드합니다."""
+        self.clear_items()
 
-    @discord.ui.button(label="◀️", style=discord.ButtonStyle.primary)
-    async def prev_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """이전 페이지로 이동합니다."""
-        if self.current_page > 1:
+        # Container - children을 positional args로 전달
+        self.add_item(ui.Container(
+            ui.TextDisplay(f"### 🏆 {self.season_name} - KR 랭킹"),
+            ui.MediaGallery(discord.MediaGalleryItem(media="attachment://ranking.png")),
+            ui.Separator(visible=False),
+            ui.TextDisplay(footer_text(self.client)),
+            accent_colour=discord.Colour.blurple(),
+        ))
+
+        # Pagination ActionRow
+        row = ui.ActionRow(
+            ui.Button(label="◀️", style=discord.ButtonStyle.primary, custom_id="prev", disabled=(self.current_page == 1)),
+            ui.Button(label=f"{self.current_page}/{self.total_pages}", style=discord.ButtonStyle.secondary, disabled=True, custom_id="indicator"),
+            ui.Button(label="▶️", style=discord.ButtonStyle.primary, custom_id="next", disabled=(self.current_page == self.total_pages)),
+        )
+        self.add_item(row)
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        """버튼 클릭을 핸들링합니다."""
+        custom_id = interaction.data.get("custom_id")
+        if custom_id == "prev" and self.current_page > 1:
             self.current_page -= 1
-            await self.update_page(interaction)
-
-    @discord.ui.button(label="1/1", style=discord.ButtonStyle.secondary, disabled=True)
-    async def page_indicator(self, interaction: discord.Interaction, button: discord.ui.Button):
-        pass
-
-    @discord.ui.button(label="▶️", style=discord.ButtonStyle.primary)
-    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """다음 페이지로 이동합니다."""
-        if self.current_page < self.total_pages:
+        elif custom_id == "next" and self.current_page < self.total_pages:
             self.current_page += 1
-            await self.update_page(interaction)
+        else:
+            # disabled 버튼이나 indicator 클릭 시 defer로 응답 처리
+            await interaction.response.defer()
+            return False
+
+        await self.update_page(interaction)
+        return False
 
     async def update_page(self, interaction: discord.Interaction):
         """페이지를 업데이트합니다 (캐시된 데이터 사용)."""
@@ -78,16 +87,14 @@ class PaginationView(discord.ui.View):
                 await interaction.response.send_message("랭킹 정보를 가져올 수 없습니다.", ephemeral=True)
                 return
 
-            # 이미지와 임베드 생성
-            embed, image_bytes = create_ranking_embed_with_image(
-                users, self.current_page, self.total_pages, self.season_name, self.client
-            )
+            # 이미지 생성
+            image_bytes = create_ranking_image(users, self.current_page, self.total_pages, self.season_name)
 
-            self.update_buttons()
+            self.build_layout()
 
             # 이미지 파일로 첨부
             file = discord.File(image_bytes, filename="ranking.png")
-            await interaction.response.edit_message(embed=embed, view=self, attachments=[file])
+            await interaction.response.edit_message(view=self, attachments=[file])
         except Exception as e:
             logger.error(f"페이지 업데이트 중 오류 발생: {e}", exc_info=True)
             await interaction.response.send_message("페이지를 업데이트하는 중 오류가 발생했습니다.", ephemeral=True)
@@ -110,17 +117,17 @@ async def get_ranking_info(client: ERClient, season_id: int, page: int = 1, fetc
             games = wins = 0
             avg_rank = avg_kills = 0.0
             stats = None
-            
+
             # API 응답에는 userId가 없으므로 닉네임으로 userId 조회
             nickname = user_data.get('nickname', '')
             user_id = None
-            
+
             # 닉네임으로 userId 조회 시도
             if nickname and fetch_stats:
                 user_id = await client.get_user_nickname(nickname)
                 if not user_id:
                     logger.warning(f"닉네임으로 userId를 찾을 수 없습니다: {nickname}")
-            
+
             # userId가 있으면 통계 정보 가져오기
             if fetch_stats and user_id:
                 try:
@@ -132,15 +139,15 @@ async def get_ranking_info(client: ERClient, season_id: int, page: int = 1, fetc
                     wins = int(stats.get('totalWins', 0))
                     avg_rank = float(stats.get('averageRank', 0.0))
                     avg_kills = float(stats.get('averageKills', 0.0))
-            
+
             # characterStats는 stats에서 가져와야 함 (user_data가 아닌)
             character_stats = []
             if fetch_stats and stats:
                 character_stats = stats.get('characterStats', [])
-            
+
             # userId가 없으면 닉네임을 user_id로 사용
             final_user_id = user_id if user_id else nickname
-            
+
             users.append(RankUser(
                 rank=user_data.get('rank', 0),
                 nickname=nickname,
@@ -166,17 +173,17 @@ class Ranking(commands.Cog):
     async def ranking_command(self, interaction: discord.Interaction):
         """랭킹을 보여줍니다."""
         # 로딩 메시지 표시
-        loading_embed = create_loading_embed(
+        loading = create_loading_layout(
             "랭킹 조회 중...",
             "상위 100명의 랭킹 데이터를 불러오고 있습니다.",
             self.client
         )
-        await interaction.response.send_message(embed=loading_embed)
+        await interaction.response.send_message(view=loading)
 
         season_id = await get_current_season_id()
         if not season_id:
-            error_embed = create_error_embed("시즌 정보 오류", "현재 시즌 정보를 가져올 수 없습니다.", self.client)
-            await interaction.edit_original_response(embed=error_embed)
+            error_layout = create_error_layout("시즌 정보 오류", "현재 시즌 정보를 가져올 수 없습니다.", self.client)
+            await interaction.edit_original_response(view=error_layout, embeds=[], attachments=[])
             return
 
         # 시즌 정보 가져오기
@@ -198,20 +205,20 @@ class Ranking(commands.Cog):
 
         # 첫 페이지가 없으면 에러
         if not cached_users or not cached_users[0]:
-            error_embed = create_error_embed("오류 발생", "랭킹 정보를 가져올 수 없습니다.", self.client)
-            await interaction.edit_original_response(embed=error_embed)
+            error_layout = create_error_layout("오류 발생", "랭킹 정보를 가져올 수 없습니다.", self.client)
+            await interaction.edit_original_response(view=error_layout, embeds=[], attachments=[])
             return
 
-        # 이미지와 임베드 생성
-        embed, image_bytes = create_ranking_embed_with_image(
-            cached_users[0], 1, total_pages, season_name, self.client
-        )
+        # 첫 페이지 이미지 생성
+        image_bytes = create_ranking_image(cached_users[0], 1, total_pages, season_name)
+
+        # PaginationView 생성
         view = PaginationView(self.client, season_id, total_pages, cached_users, season_name)
 
         # 이미지 파일로 첨부
         file = discord.File(image_bytes, filename="ranking.png")
-        await interaction.edit_original_response(embed=embed, view=view, attachments=[file])
+        await interaction.edit_original_response(view=view, embeds=[], attachments=[file])
 
 async def setup(client: ERClient):
     """명령어를 등록합니다."""
-    await client.add_cog(Ranking(client)) 
+    await client.add_cog(Ranking(client))
