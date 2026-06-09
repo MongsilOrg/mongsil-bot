@@ -23,6 +23,11 @@ KST = pytz.timezone('Asia/Seoul')
 SEASON_ZERO_ID = 19  # 시즌 0이 되는 ID 값
 SEASON_NAME_OFFSET = 9  # Season16은 시즌7이므로, 9를 빼면 됨
 
+# 시즌 코드명 (API 미제공 → seasonID 기준 수동 매핑, 새 시즌마다 한 줄 추가)
+SEASON_CODENAMES: Dict[int, str] = {
+    39: "쁘띠 미뇽",  # 정규 시즌 11
+}
+
 # 시즌 데이터 캐시 (API 호출 최소화)
 _season_cache: Optional[Dict[str, Any]] = None
 _season_cache_time: Optional[datetime] = None
@@ -361,6 +366,13 @@ def create_season_layout(season_info: Optional[SeasonInfo], client: ERClient) ->
     else:
         season_emoji = SEASON_EMOJIS['regular']
 
+    # 시즌 코드명이 있으면 이름과 함께 표시 (예: 정규 시즌 11 · 쁘띠 미뇽)
+    codename = SEASON_CODENAMES.get(season_info.number)
+    name_display = f"{season_info.name} · {codename}" if codename else season_info.name
+
+    # 시즌 시작 전이면 '남은 시간' 대신 '시작까지'로 표기
+    time_label = "시작까지" if status_text == "시즌 시작 전" else "남은 시간"
+
     # 시즌 기간 정보 (간결한 형식)
     start_date_str = season_info.start_date.strftime("%m/%d %H시")
     end_date_str = season_info.end_date.strftime("%m/%d %H시")
@@ -383,7 +395,7 @@ def create_season_layout(season_info: Optional[SeasonInfo], client: ERClient) ->
 
     container = ui.Container(
         ui.TextDisplay(
-            f"### {season_emoji} {season_info.name}\n"
+            f"### {season_emoji} {name_display}\n"
             f"{status_emoji} **{status_text}**"
         ),
         ui.Separator(),
@@ -391,7 +403,7 @@ def create_season_layout(season_info: Optional[SeasonInfo], client: ERClient) ->
             f"📅 **{start_date_str}** ~ **{end_date_str}**\n"
             f"-# {elapsed_days}일째 / 총 {total_days}일"
         ),
-        ui.TextDisplay(f"⏰ **남은 시간**: {remaining_time}"),
+        ui.TextDisplay(f"⏰ **{time_label}**: {remaining_time}"),
         ui.Separator(),
         ui.TextDisplay(f"{progress_bar}  **{progress:.1f}%**"),
         ui.Separator(visible=False),
