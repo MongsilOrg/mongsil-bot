@@ -8,10 +8,13 @@ class TierSystem:
 
     # 티어 정보를 담는 클래스 변수
     TIERS = {
-        "이터니티": {"base": 7800, "icon": "10.이터니티", "special_condition": lambda rank: rank <= 300},
-        "데미갓": {"base": 7800, "icon": "9.데미갓", "special_condition": lambda rank: 300 < rank <= 1000},
-        "미스릴": {"base": 7100, "icon": "8.미스릴"},
-        "메테오라이트": {"base": 6400, "icon": "7.메테오라이트"},
+        "이터니티": {"base": 8300, "icon": "10.이터니티", "special_condition": lambda rank: rank <= 300},
+        "데미갓": {"base": 8300, "icon": "9.데미갓", "special_condition": lambda rank: 300 < rank <= 1000},
+        "미스릴": {"base": 7600, "icon": "8.미스릴"},
+        "메테오라이트 1": {"base": 7300, "icon": "7.메테오라이트"},
+        "메테오라이트 2": {"base": 7000, "icon": "7.메테오라이트"},
+        "메테오라이트 3": {"base": 6700, "icon": "7.메테오라이트"},
+        "메테오라이트 4": {"base": 6400, "icon": "7.메테오라이트"},
         "다이아몬드 1": {"base": 6050, "icon": "6.다이아몬드"},
         "다이아몬드 2": {"base": 5700, "icon": "6.다이아몬드"},
         "다이아몬드 3": {"base": 5350, "icon": "6.다이아몬드"},
@@ -54,8 +57,8 @@ class TierSystem:
         if mmr == 0:
             return "언랭크"
 
-        # 이터니티와 데미갓은 특별한 조건이 있음
-        if mmr >= 7800:
+        # 이터니티와 데미갓은 미스릴 도달 후 순위 기반 (시즌11: 미스릴 7600 + 700)
+        if mmr >= 8300:
             if rank <= 300:
                 return "이터니티"
             elif rank <= 1000:
