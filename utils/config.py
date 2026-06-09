@@ -15,10 +15,9 @@ class BotConfig:
     # 필수 설정
     bot_token: str
     api_key: str
-    notice_channel_id: int
-    footer_icon: str
 
     # 선택적 설정 (기본값 포함)
+    footer_icon: Optional[str] = None
     embed_color: int = 0x3498db
     retry_delay: int = 1
     cache_ttl: int = 3600
@@ -44,8 +43,6 @@ class BotConfig:
         required_vars = {
             'BOT_TOKEN': os.getenv('BOT_TOKEN'),
             'API_KEY': os.getenv('API_KEY'),
-            'NOTICE_CHANNEL_ID': os.getenv('NOTICE_CHANNEL_ID'),
-            'FOOTER_ICON': os.getenv('FOOTER_ICON')
         }
 
         missing_vars = [var for var, value in required_vars.items() if not value]
@@ -55,8 +52,7 @@ class BotConfig:
         return cls(
             bot_token=required_vars['BOT_TOKEN'],
             api_key=required_vars['API_KEY'],
-            notice_channel_id=int(required_vars['NOTICE_CHANNEL_ID']),
-            footer_icon=required_vars['FOOTER_ICON'],
+            footer_icon=os.getenv('FOOTER_ICON'),
             steam_api_key=os.getenv('STEAM_API_KEY'),
         )
 
