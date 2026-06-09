@@ -382,11 +382,18 @@ def create_season_layout(season_info: Optional[SeasonInfo], client: ERClient) ->
     view = ui.LayoutView(timeout=None)
 
     container = ui.Container(
-        ui.TextDisplay(f"### {season_emoji} {season_info.name}\n{status_emoji} **{status_text}** • {progress:.1f}% 진행"),
+        ui.TextDisplay(
+            f"### {season_emoji} {season_info.name}\n"
+            f"{status_emoji} **{status_text}**"
+        ),
         ui.Separator(),
-        ui.TextDisplay(f"{EMOJIS['calendar']} **시즌 기간**\n**{start_date_str}** ~ **{end_date_str}** ({elapsed_days}/{total_days}일)"),
-        ui.TextDisplay(f"{EMOJIS['time']} **남은 시간**: {remaining_time}"),
-        ui.TextDisplay(f"{EMOJIS['trend']} **시즌 진행도**\n```{progress_bar} {progress:.1f}%```"),
+        ui.TextDisplay(
+            f"📅 **{start_date_str}** ~ **{end_date_str}**\n"
+            f"-# {elapsed_days}일째 / 총 {total_days}일"
+        ),
+        ui.TextDisplay(f"⏰ **남은 시간**: {remaining_time}"),
+        ui.Separator(),
+        ui.TextDisplay(f"{progress_bar}  **{progress:.1f}%**"),
         ui.Separator(visible=False),
         ui.TextDisplay(footer_text(client)),
         accent_colour=discord.Colour.blurple(),
