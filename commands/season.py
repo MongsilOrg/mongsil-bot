@@ -317,23 +317,10 @@ def _create_progress_bar(progress: float, length: int = 20) -> str:
     Returns:
         진행도 바 문자열
     """
-    filled_length = int(length * progress / 100)
-
-    # 진행도에 따른 다른 문자 사용
-    if progress < 25:
-        filled_char = '▱'
-        empty_char = '▱'
-    elif progress < 50:
-        filled_char = '▰'
-        empty_char = '▱'
-    elif progress < 75:
-        filled_char = '█'
-        empty_char = '▱'
-    else:
-        filled_char = '█'
-        empty_char = '░'
-
-    return filled_char * filled_length + empty_char * (length - filled_length)
+    # 칠해진 칸과 빈 칸 모두 같은 폭의 블록 문자(█/░)를 사용해
+    # 진행도와 실제 막대 길이가 어긋나지 않도록 한다.
+    filled_length = max(0, min(length, round(length * progress / 100)))
+    return '█' * filled_length + '░' * (length - filled_length)
 
 
 def create_season_layout(season_info: Optional[SeasonInfo], client: ERClient) -> ui.LayoutView:
