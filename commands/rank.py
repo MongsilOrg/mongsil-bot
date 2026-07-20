@@ -25,7 +25,6 @@ def create_rank_layout(nickname: str, stats: Dict[str, Any], client: ERClient) -
     rank_size = int(stats.get('rankSize', 0))
     games = int(stats.get('totalGames', 0))
     wins = int(stats.get('totalWins', 0))
-    team_kills = int(stats.get('totalTeamKills', 0))
     avg_rank = float(stats.get('averageRank', 0.0))
     avg_kills = float(stats.get('averageKills', 0.0))
     avg_assists = float(stats.get('averageAssistants', 0.0))
@@ -40,18 +39,12 @@ def create_rank_layout(nickname: str, stats: Dict[str, Any], client: ERClient) -
 
     # 계산이 필요한 통계
     win_rate = (wins / games * 100) if games > 0 else 0.0
-    avg_team_kills = (team_kills / games) if games > 0 else 0.0
 
     # 티어 정보 계산
     tier = TierSystem.get_tier(mmr, rank)
-    tier_base = TierSystem.get_tier_base(tier)
-    tier_score = mmr - tier_base
 
     # 상위 백분율 계산
     top_percentage = (rank / rank_size * 100) if rank_size > 0 else 0.0
-
-    # 티어 표시 문자열 생성
-    tier_display = f"{tier} - {tier_score:,} RP"
 
     # 티어 아이콘 URL
     icon_name = TierSystem.get_tier_icon(tier)

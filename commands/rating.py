@@ -10,7 +10,6 @@ from utils.config import config
 from utils.layouts import create_error_layout, footer_text
 from utils.errors import handle_errors, APIError
 from utils.logging_config import get_logger
-from utils.emojis import EMOJIS
 
 logger = get_logger('레이팅')
 
