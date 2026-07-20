@@ -30,9 +30,7 @@ def create_rank_layout(nickname: str, stats: Dict[str, Any], client: ERClient) -
     avg_assists = float(stats.get('averageAssistants', 0.0))
     avg_hunts = float(stats.get('averageHunts', 0.0))
     top1_rate = float(stats.get('top1', 0.0))
-    top2_rate = float(stats.get('top2', 0.0))
     top3_rate = float(stats.get('top3', 0.0))
-    top5_rate = float(stats.get('top5', 0.0))
 
     # API에서 실제 닉네임 가져오기 (대소문자 구분 등)
     actual_nickname = stats.get('nickname', nickname)
