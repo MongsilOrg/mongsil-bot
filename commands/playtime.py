@@ -203,11 +203,11 @@ def create_daily_chart(daily_stats: Dict[datetime.date, int]) -> str:
         date_str = f"{date.strftime('%m/%d')} ({weekday})"
 
         if play_time == 0:
-            chart_lines.append(f"`{date_str}` ░░░░░░░░░░ `-`")
+            chart_lines.append(f"`{date_str}` ▱▱▱▱▱▱▱▱▱▱ `-`")
         else:
             # 진행률 바 생성 (10칸)
-            progress = min(10, int((play_time / max_time) * 10))
-            bar = "█" * progress + "░" * (10 - progress)
+            progress = max(1, min(10, round((play_time / max_time) * 10)))
+            bar = "▰" * progress + "▱" * (10 - progress)
             time_str = format_duration(play_time)
             chart_lines.append(f"`{date_str}` {bar} `{time_str}`")
 
