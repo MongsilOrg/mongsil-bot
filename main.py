@@ -4,9 +4,21 @@ from client import ERClient
 import asyncio
 from datetime import datetime
 
-from utils.config import config
+import os
+
+import sentry_sdk
+
+from utils.config import config  # import 시점에 load_dotenv()가 실행된다
 from utils.logging_config import setup_logging, get_logger
 from utils.emoji_zoom import process_emoji_zoom, cleanup_emoji_zoom_cache
+
+# 장애 추적. config import로 .env가 로드된 뒤여야 DSN이 잡힌다.
+# DSN이 비어 있으면 transport가 없어 어디로도 전송되지 않는다.
+sentry_sdk.init(
+    dsn=os.getenv("SENTRY_DSN", ""),
+    traces_sample_rate=0.1,
+    environment="production",
+)
 
 # 로깅 설정
 setup_logging(level="INFO", log_file="bot.log")
