@@ -62,46 +62,45 @@ async def fetch_rating_info(client: ERClient, season_id: int) -> Tuple[Optional[
 def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], client: ERClient, season_name: str) -> ui.LayoutView:
     """레이팅 정보 LayoutView를 생성합니다."""
     view = ui.LayoutView()
+    children = []
 
-    container_items = []
+    children.append(ui.TextDisplay(f"### 🏆 {season_name} — KR 레이팅 컷"))
+    children.append(ui.Separator())
 
-    # 제목
-    container_items.append(ui.TextDisplay(f"### {EMOJIS['trophy']} {season_name} KR 레이팅 컷"))
-
-    container_items.append(ui.Separator())
-
-    # 300등 정보
+    # Eternity (300등)
     if rank_300:
         mmr_300 = rank_300.get('mmr', 0)
-        nickname_300 = rank_300.get('nickname', '알 수 없음')
-        container_items.append(ui.TextDisplay(
-            f"👑 **이터니티 컷 (300등)**\n닉네임: {nickname_300}\nMMR: {mmr_300:,}"
+        nick_300 = rank_300.get('nickname', '알 수 없음')
+        children.append(ui.TextDisplay(
+            f"👑 **이터니티** (300등)\n"
+            f"**{mmr_300:,}** RP · {nick_300}"
         ))
     else:
-        container_items.append(ui.TextDisplay(
-            "👑 **이터니티 컷 (300등)**\n정보를 가져올 수 없습니다."
-        ))
+        children.append(ui.TextDisplay("👑 **이터니티** (300등)\n-# 정보를 가져올 수 없습니다."))
 
-    container_items.append(ui.Separator())
+    children.append(ui.Separator())
 
-    # 1000등 정보
+    # Demigod (1000등)
     if rank_1000:
         mmr_1000 = rank_1000.get('mmr', 0)
-        nickname_1000 = rank_1000.get('nickname', '알 수 없음')
-        container_items.append(ui.TextDisplay(
-            f"✨ **데미갓 컷 (1000등)**\n닉네임: {nickname_1000}\nMMR: {mmr_1000:,}"
+        nick_1000 = rank_1000.get('nickname', '알 수 없음')
+        children.append(ui.TextDisplay(
+            f"✨ **데미갓** (1000등)\n"
+            f"**{mmr_1000:,}** RP · {nick_1000}"
         ))
     else:
-        container_items.append(ui.TextDisplay(
-            "✨ **데미갓 컷 (1000등)**\n정보를 가져올 수 없습니다."
-        ))
+        children.append(ui.TextDisplay("✨ **데미갓** (1000등)\n-# 정보를 가져올 수 없습니다."))
 
-    # 푸터
-    container_items.append(ui.Separator(visible=False))
-    container_items.append(ui.TextDisplay(footer_text(client)))
+    # Show MMR gap if both available
+    if rank_300 and rank_1000:
+        gap = rank_300.get('mmr', 0) - rank_1000.get('mmr', 0)
+        children.append(ui.Separator())
+        children.append(ui.TextDisplay(f"-# 이터니티 ↔ 데미갓 차이: {gap:,} RP"))
 
-    view.add_item(ui.Container(*container_items, accent_colour=discord.Colour.blurple()))
+    children.append(ui.Separator(visible=False))
+    children.append(ui.TextDisplay(footer_text(client)))
 
+    view.add_item(ui.Container(*children, accent_colour=discord.Colour.blurple()))
     return view
 
 

@@ -64,9 +64,9 @@ def create_rank_layout(nickname: str, stats: Dict[str, Any], client: ERClient) -
 
     # 헤더 섹션: 닉네임 + 티어 정보 + 썸네일
     header_text = (
-        f"## {EMOJIS['trophy']} {actual_nickname} - {mmr:,}RP\n"
-        f"{tier_display}\n"
-        f"#{rank:,}등 / {rank_size:,}명 중 (상위 {top_percentage:.2f}%)"
+        f"## {actual_nickname}\n"
+        f"**{tier}** · {mmr:,} RP\n"
+        f"-# #{rank:,}등 / {rank_size:,}명 중 · 상위 {top_percentage:.2f}%"
     )
     container_items.append(
         ui.Section(
@@ -77,11 +77,12 @@ def create_rank_layout(nickname: str, stats: Dict[str, Any], client: ERClient) -
 
     container_items.append(ui.Separator())
 
-    # 통계 정보
+    # 게임 통계 섹션 - 깔끔한 2줄 형식
+    win_rate_text = f"**{win_rate:.1f}%**" if win_rate > 0 else "0%"
     stats_text = (
-        f"✨ **승률** {win_rate:.2f}% · 🎮 **게임** {games:,}판({wins}승) · 📊 **평순** {avg_rank:.2f}위\n"
-        f"🗡️ **평킬** {avg_kills:.2f} · 🤝 **어시** {avg_assists:.2f} · ⚔️ **팀킬** {avg_team_kills:.2f}\n"
-        f"🥇 **탑1** {top1_rate*100:.2f}% · 🥉 **탑3** {top3_rate*100:.2f}% · 🎯 **사냥** {avg_hunts:.2f}"
+        f"🎮 **{games:,}**게임 · **{wins}**승 · 승률 {win_rate_text}\n"
+        f"📊 평균 **{avg_rank:.1f}**등 · 🥇 탑1 **{top1_rate*100:.1f}%** · 🥉 탑3 **{top3_rate*100:.1f}%**\n"
+        f"🗡️ 평균 킬 **{avg_kills:.1f}** · 어시 **{avg_assists:.1f}** · 사냥 **{avg_hunts:.1f}**"
     )
     container_items.append(ui.TextDisplay(stats_text))
 
@@ -90,19 +91,18 @@ def create_rank_layout(nickname: str, stats: Dict[str, Any], client: ERClient) -
     if character_stats:
         top_characters = sorted(character_stats, key=lambda x: x.get('totalGames', 0), reverse=True)[:3]
 
-        character_info = []
-        for char in top_characters:
-            char_code = char.get('characterCode', 0)
-            char_games = char.get('totalGames', 0)
-            char_wins = char.get('wins', 0)
-            char_win_rate = (char_wins / char_games * 100) if char_games > 0 else 0.0
-
-            char_name = get_character_name(char_code)
-            character_info.append(f"**{char_name}**: {char_games}게임 ({char_win_rate:.1f}%)")
-
-        if character_info:
+        if top_characters:
             container_items.append(ui.Separator())
-            container_items.append(ui.TextDisplay("### 🎭 주요 캐릭터\n" + "\n".join(character_info)))
+            char_lines = []
+            for char in top_characters:
+                char_code = char.get('characterCode', 0)
+                char_games = char.get('totalGames', 0)
+                char_wins = char.get('wins', 0)
+                char_win_rate = (char_wins / char_games * 100) if char_games > 0 else 0.0
+
+                char_name = get_character_name(char_code)
+                char_lines.append(f"**{char_name}** — {char_games}게임 · 승률 {char_win_rate:.0f}%")
+            container_items.append(ui.TextDisplay("### 🎭 모스트 캐릭터\n" + "\n".join(char_lines)))
 
     # 푸터
     container_items.append(ui.Separator(visible=False))
@@ -115,7 +115,7 @@ def create_rank_layout(nickname: str, stats: Dict[str, Any], client: ERClient) -
         ui.ActionRow(
             ui.Button(
                 style=discord.ButtonStyle.link,
-                label="DAK.GG 바로가기",
+                label="DAK.GG",
                 emoji=EMOJIS['chart'],
                 url=f"https://dak.gg/er/players/{actual_nickname}"
             )

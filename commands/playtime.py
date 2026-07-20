@@ -167,29 +167,34 @@ def create_playtime_layout(client, nickname: str, stats: PlayTimeStats) -> ui.La
     daily_chart = create_daily_chart(stats.daily_stats)
 
     view = ui.LayoutView()
-    container = ui.Container(accent_colour=discord.Colour.blurple())
-    container.add_item(ui.TextDisplay(f"### 🔥 {nickname}님의 플레이 타임\n{activity_level} • 최근 7일간 게임 활동"))
-    container.add_item(ui.Separator())
-    container.add_item(ui.TextDisplay(f"📊 **총 플레이 시간**: **{format_duration(stats.total_seconds)}** • {stats.games_played:,}판 · 📈 **일일 평균**: **{format_duration(daily_avg)}**"))
-    container.add_item(ui.Separator())
-    container.add_item(ui.TextDisplay(f"### 📊 일일 플레이 타임\n{daily_chart}"))
+    children = []
 
+    # Header
+    children.append(ui.TextDisplay(f"### ⏱️ {nickname}님의 플레이 타임\n{activity_level} · 최근 7일간 게임 활동"))
+    children.append(ui.Separator())
+
+    # Summary stats - two clean lines
+    summary = f"🎮 **{stats.games_played}**게임 · 총 **{format_duration(stats.total_seconds)}** 플레이"
+    summary += f"\n📊 일일 평균 **{format_duration(daily_avg)}**"
     if stats.games_played > 0:
-        avg_game_duration = stats.total_seconds / stats.games_played
-        container.add_item(ui.TextDisplay(f"🕐 **평균 게임 시간**: **{format_duration(int(avg_game_duration))}**"))
+        avg_game = stats.total_seconds // stats.games_played
+        summary += f" · 게임당 평균 **{format_duration(avg_game)}**"
+    children.append(ui.TextDisplay(summary))
+    children.append(ui.Separator())
 
-    container.add_item(ui.Separator(visible=False))
-    container.add_item(ui.TextDisplay(footer_text(client)))
-    view.add_item(container)
+    # Daily chart
+    children.append(ui.TextDisplay(f"### 📊 일별 플레이 타임\n{daily_chart}"))
+
+    children.append(ui.Separator(visible=False))
+    children.append(ui.TextDisplay(footer_text(client)))
+
+    view.add_item(ui.Container(*children, accent_colour=discord.Colour.blurple()))
 
     # DAK.GG 링크 버튼
-    dakgg_button = ui.Button(
-        style=discord.ButtonStyle.link,
-        label="DAK.GG 바로가기",
-        emoji=EMOJIS['chart'],
-        url=f"https://dak.gg/er/players/{nickname}"
-    )
-    view.add_item(ui.ActionRow(dakgg_button))
+    view.add_item(ui.ActionRow(
+        ui.Button(style=discord.ButtonStyle.link, label="DAK.GG", emoji=EMOJIS['chart'],
+                  url=f"https://dak.gg/er/players/{nickname}")
+    ))
 
     return view
 

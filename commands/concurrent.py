@@ -175,38 +175,32 @@ def create_concurrent_layout(count_info: Optional[PlayerCount], client: ERClient
         )
 
     current_time_str = datetime.now().strftime("%H시 %M분")
-
-    # 24시간 통계
     stats = concurrent_data.get_statistics()
 
-    # Container 내부 아이템 구성
-    items = [
-        ui.TextDisplay(f"### {EMOJIS['users']} 이터널 리턴 현재 동시 접속자"),
+    children = [
+        ui.TextDisplay(f"### 👥 이터널 리턴 동시 접속자"),
         ui.Separator(),
-        ui.TextDisplay(f"{EMOJIS['chart']} **현재 동시 접속자**: **{count_info.current:,}명** · {EMOJIS['clock']} **조회 시각**: {current_time_str}"),
+        ui.TextDisplay(f"🟢 **현재 접속자**\n## {count_info.current:,}명\n-# {current_time_str} 기준"),
     ]
 
     if stats['data_count'] > 0 and stats['max_time']:
         max_time_str = stats['max_time'].strftime("%H시 %M분")
-        items.append(ui.Separator())
-        items.append(ui.TextDisplay(f"{EMOJIS['trophy']} **24시간 최대 동접**: **{stats['max_count']:,}명** · {EMOJIS['clock']} **기록 시각**: {max_time_str}"))
+        children.append(ui.Separator())
+        children.append(ui.TextDisplay(
+            f"🏆 **24시간 최고**\n"
+            f"**{stats['max_count']:,}명** · {max_time_str} 기록"
+        ))
 
-    items.append(ui.Separator(visible=False))
-    items.append(ui.TextDisplay(footer_text(client)))
+    children.append(ui.Separator(visible=False))
+    children.append(ui.TextDisplay(footer_text(client)))
 
     view = ui.LayoutView(timeout=None)
-    view.add_item(ui.Container(*items, accent_colour=discord.Colour.blurple()))
+    view.add_item(ui.Container(*children, accent_colour=discord.Colour.blurple()))
 
-    # SteamDB 링크 버튼
     view.add_item(ui.ActionRow(
-        ui.Button(
-            style=discord.ButtonStyle.link,
-            label="SteamDB 바로가기",
-            emoji=EMOJIS['chart'],
-            url="https://steamdb.info/app/1049590/graphs/",
-        ),
+        ui.Button(style=discord.ButtonStyle.link, label="SteamDB",
+                  emoji=EMOJIS['chart'], url="https://steamdb.info/app/1049590/graphs/")
     ))
-
     return view
 
 class Concurrent(commands.Cog):
