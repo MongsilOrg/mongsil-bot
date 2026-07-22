@@ -1,0 +1,38 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          timeout: 60s
+          script: |
+            echo ${{ secrets.SUDO_PASSWORD }} | /usr/bin/sudo -S /usr/local/bin/docker exec python bash -c '
+              cp /docker/.ssh/id_ed25519* ~/.ssh/ 2>/dev/null
+              chmod 600 ~/.ssh/id_ed25519
+              ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+              cd /docker/mongsilbot
+              git config --global --add safe.directory /docker/mongsilbot
+              git fetch origin main
+              git reset --hard origin/main
+              pip install -r requirements.txt -q 2>/dev/null
+              pmc restart mongsilbot
+            '
