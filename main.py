@@ -14,19 +14,45 @@ from utils.emoji_zoom import process_emoji_zoom, cleanup_emoji_zoom_cache
 
 # 장애 추적. config import로 .env가 로드된 뒤여야 DSN이 잡힌다.
 # DSN이 비어 있으면 transport가 없어 어디로도 전송되지 않는다.
+_NOISE_SUBSTRINGS = (
+    "찾을 수 없습니다",
+    "Connection timeout",
+    "Cannot connect to host",
+    "Temporary failure in name resolution",
+    "네트워크 오류",
+    "연결 중 오류",
+)
+_NOISE_EXC_NAMES = (
+    "TimeoutError", "ConnectTimeoutError", "ReadTimeout", "ConnectionError",
+    "ClientConnectorError", "ClientOSError", "ServerDisconnectedError",
+    "WSServerHandshakeError", "ConnectionClosed", "ConnectionResetError",
+)
+
+
 def _sentry_before_send(event, hint):
-    """예상된 사용자 에러·일시적 네트워크 에러는 Sentry로 보내지 않는다."""
+    """예상된 사용자 에러·일시적 네트워크 에러는 Sentry로 보내지 않는다.
+
+    exc_info 뿐 아니라 LoggingIntegration이 잡는 logger.error 문자열도 검사한다.
+    BotError는 예외로 전파되지 않고 문자열로만 로깅되므로 exc_info가 없다.
+    """
+    # 검사 대상 텍스트 수집: 예외 메시지 + 로그 메시지
+    texts = []
     exc_info = hint.get("exc_info")
     if exc_info:
         name = getattr(exc_info[0], "__name__", "")
-        msg = str(exc_info[1])
-        if "찾을 수 없습니다" in msg:
+        if name in _NOISE_EXC_NAMES:
             return None
-        if name in ("TimeoutError", "ConnectTimeoutError", "ReadTimeout", "ConnectionError", "ClientConnectorError", "ClientOSError", "ServerDisconnectedError", "WSServerHandshakeError", "ConnectionClosed", "ConnectionResetError"):
+        texts.append(str(exc_info[1]))
+
+    logentry = event.get("logentry") or {}
+    for candidate in (logentry.get("message"), logentry.get("formatted"), event.get("message")):
+        if candidate:
+            texts.append(str(candidate))
+
+    blob = " ".join(texts)
+    for _t in _NOISE_SUBSTRINGS:
+        if _t in blob:
             return None
-        for _t in ("Connection timeout", "Cannot connect to host", "Temporary failure in name resolution", "네트워크 오류", "연결 중 오류"):
-            if _t in msg:
-                return None
     return event
 
 
