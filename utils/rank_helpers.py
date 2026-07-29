@@ -54,7 +54,9 @@ async def fetch_user_stats_solo(
             if len(stats_list) == 1:
                 return stats_list[0]
 
-            raise NotFoundError("유저 통계 없음", f"유저의 랭크 게임 기록이 없습니다.")
+            # 통계가 있는데 랭크 모드 항목만 없는 건 유저 조건이 아니라 응답 형식 이상.
+            raise APIError("유저 통계 형식 불일치: 랭크 모드 항목 없음",
+                           "통계를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.")
         else:
             error_msg = data.get('message') if data else 'No response'
             logger.error(f"유저 통계 API 오류: {error_msg}")

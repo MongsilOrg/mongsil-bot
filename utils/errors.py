@@ -57,7 +57,12 @@ def handle_errors(
                 return await func(*args, **kwargs)
             except BotError as e:
                 if log_error:
-                    logger.error(f"BotError in {func.__name__}: {e.message}")
+                    # 오타 조회, 기록 없음 같은 예상된 유저 조건은 WARNING으로 남긴다.
+                    # Sentry는 ERROR 이상만 수집하므로 노이즈가 되지 않는다.
+                    if isinstance(e, (NotFoundError, ValidationError)):
+                        logger.warning(f"BotError in {func.__name__}: {e.message}")
+                    else:
+                        logger.error(f"BotError in {func.__name__}: {e.message}")
 
                 interaction = None
                 for arg in args:
