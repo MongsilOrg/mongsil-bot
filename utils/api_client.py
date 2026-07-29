@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from collections import OrderedDict
 import logging
 from .config import config
-from .errors import APIError, BotError
+from .errors import APIError, BotError, redact_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -124,11 +124,11 @@ class OptimizedAPIClient:
                             "API 요청 중 오류가 발생했습니다."
                         )
             except aiohttp.ClientError as e:
-                logger.error(f"네트워크 오류: {e}")
-                raise APIError(f"네트워크 오류: {e}", "네트워크 연결 중 오류가 발생했습니다.")
+                logger.error(f"네트워크 오류: {redact_secrets(e)}")
+                raise APIError(f"네트워크 오류: {redact_secrets(e)}", "네트워크 연결 중 오류가 발생했습니다.")
             except Exception as e:
-                logger.error(f"예상치 못한 오류: {e}")
-                raise BotError(f"예상치 못한 오류: {e}", "서버 오류가 발생했습니다.")
+                logger.error(f"예상치 못한 오류: {redact_secrets(e)}")
+                raise BotError(f"예상치 못한 오류: {redact_secrets(e)}", "서버 오류가 발생했습니다.")
     
     async def batch_get(self, requests: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """여러 요청을 배치로 처리합니다."""

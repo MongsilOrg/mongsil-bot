@@ -9,6 +9,7 @@ import os
 import sentry_sdk
 
 from utils.config import config  # import 시점에 load_dotenv()가 실행된다
+from utils.errors import redact_secrets
 from utils.logging_config import setup_logging, get_logger
 from utils.emoji_zoom import process_emoji_zoom, cleanup_emoji_zoom_cache
 
@@ -53,6 +54,20 @@ def _sentry_before_send(event, hint):
     for _t in _NOISE_SUBSTRINGS:
         if _t in blob:
             return None
+
+    # 통과한 이벤트에도 URL 쿼리 자격증명이 남지 않게 가린다.
+    if logentry:
+        for k in ("message", "formatted"):
+            if logentry.get(k):
+                logentry[k] = redact_secrets(logentry[k])
+    if event.get("message"):
+        event["message"] = redact_secrets(event["message"])
+    for exc in (event.get("exception") or {}).get("values") or []:
+        if exc.get("value"):
+            exc["value"] = redact_secrets(exc["value"])
+    for crumb in (event.get("breadcrumbs") or {}).get("values") or []:
+        if crumb.get("message"):
+            crumb["message"] = redact_secrets(crumb["message"])
     return event
 
 

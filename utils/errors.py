@@ -1,6 +1,8 @@
 """
 에러 처리 유틸리티
 """
+import re
+
 import discord
 from typing import Optional, Callable
 from functools import wraps
@@ -8,6 +10,14 @@ from .layouts import create_error_layout
 from .logging_config import get_logger
 
 logger = get_logger('errors')
+
+# aiohttp 예외 문자열에는 요청 URL이 쿼리까지 통째로 들어온다(Steam key= 등).
+_SECRET_QS = re.compile(r"(key|apikey|api_key)=[^&\s'\"]+", re.IGNORECASE)
+
+
+def redact_secrets(text) -> str:
+    """로그, 에러 메시지에 실릴 문자열에서 URL 쿼리 자격증명을 가린다."""
+    return _SECRET_QS.sub(r"\1=****", str(text))
 
 class BotError(Exception):
     """봇 관련 기본 예외 클래스"""
