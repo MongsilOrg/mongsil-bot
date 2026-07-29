@@ -37,8 +37,8 @@ def format_user_text(u: RankUser) -> str:
     medal = RANK_MEDALS.get(u.rank, f'**#{u.rank}**')
     win_rate = f'{u.wins / u.games * 100:.0f}%' if u.games > 0 else '-'
     return (
-        f"{medal}  **{u.nickname}** · **{u.mmr:,}** RP\n"
-        f"-# {u.games}게임 · 승률 {win_rate} · 평균 {u.avg_rank:.1f}등 · 킬 {u.avg_kills:.1f}"
+        f"{medal}  **{u.nickname}** | **{u.mmr:,}** RP\n"
+        f"-# {u.games}게임 | 승률 {win_rate} | 평균 {u.avg_rank:.1f}등 | 킬 {u.avg_kills:.1f}"
     )
 
 
@@ -60,7 +60,7 @@ class PaginationView(CooldownLayoutView):
 
         users = self.page_cache.get(self.current_page, [])
 
-        children = [ui.TextDisplay(f"### 🏆 {self.season_name} — KR 랭킹")]
+        children = [ui.TextDisplay(f"### 🏆 {self.season_name} KR 랭킹")]
         children.append(ui.Separator())
 
         for i, u in enumerate(users):

@@ -63,7 +63,7 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], cl
     view = ui.LayoutView()
     children = []
 
-    children.append(ui.TextDisplay(f"### 🏆 {season_name} — KR 레이팅 컷"))
+    children.append(ui.TextDisplay(f"### 🏆 {season_name} KR 레이팅 컷"))
     children.append(ui.Separator())
 
     # Eternity (300등)
@@ -72,7 +72,7 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], cl
         nick_300 = rank_300.get('nickname', '알 수 없음')
         children.append(ui.TextDisplay(
             f"👑 **이터니티** (300등)\n"
-            f"**{mmr_300:,}** RP · {nick_300}"
+            f"**{mmr_300:,}** RP | {nick_300}"
         ))
     else:
         children.append(ui.TextDisplay("👑 **이터니티** (300등)\n-# 정보를 가져올 수 없습니다."))
@@ -85,7 +85,7 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], cl
         nick_1000 = rank_1000.get('nickname', '알 수 없음')
         children.append(ui.TextDisplay(
             f"✨ **데미갓** (1000등)\n"
-            f"**{mmr_1000:,}** RP · {nick_1000}"
+            f"**{mmr_1000:,}** RP | {nick_1000}"
         ))
     else:
         children.append(ui.TextDisplay("✨ **데미갓** (1000등)\n-# 정보를 가져올 수 없습니다."))

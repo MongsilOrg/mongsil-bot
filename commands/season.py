@@ -353,9 +353,9 @@ def create_season_layout(season_info: Optional[SeasonInfo], client: ERClient) ->
     else:
         season_emoji = SEASON_EMOJIS['regular']
 
-    # 시즌 코드명이 있으면 이름과 함께 표시 (예: 정규 시즌 11 · 쁘띠 미뇽)
+    # 시즌 코드명이 있으면 이름과 함께 표시 (예: 정규 시즌 11 (쁘띠 미뇽))
     codename = SEASON_CODENAMES.get(season_info.number)
-    name_display = f"{season_info.name} · {codename}" if codename else season_info.name
+    name_display = f"{season_info.name} ({codename})" if codename else season_info.name
 
     # 시즌 시작 전이면 '남은 시간' 대신 '시작까지'로 표기
     time_label = "시작까지" if status_text == "시즌 시작 전" else "남은 시간"

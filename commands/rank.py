@@ -56,8 +56,8 @@ def create_rank_layout(nickname: str, stats: Dict[str, Any], client: ERClient) -
     # 헤더 섹션: 닉네임 + 티어 정보 + 썸네일
     header_text = (
         f"## {actual_nickname}\n"
-        f"**{tier}** · {mmr:,} RP\n"
-        f"-# #{rank:,}등 / {rank_size:,}명 중 · 상위 {top_percentage:.2f}%"
+        f"**{tier}** | {mmr:,} RP\n"
+        f"-# #{rank:,}등 / {rank_size:,}명 중, 상위 {top_percentage:.2f}%"
     )
     container_items.append(
         ui.Section(
@@ -71,9 +71,9 @@ def create_rank_layout(nickname: str, stats: Dict[str, Any], client: ERClient) -
     # 게임 통계 섹션 - 깔끔한 2줄 형식
     win_rate_text = f"**{win_rate:.1f}%**" if win_rate > 0 else "0%"
     stats_text = (
-        f"🎮 **{games:,}**게임 · **{wins}**승 · 승률 {win_rate_text}\n"
-        f"📊 평균 **{avg_rank:.1f}**등 · 🥇 탑1 **{top1_rate*100:.1f}%** · 🥉 탑3 **{top3_rate*100:.1f}%**\n"
-        f"🗡️ 평균 킬 **{avg_kills:.1f}** · 어시 **{avg_assists:.1f}** · 사냥 **{avg_hunts:.1f}**"
+        f"🎮 **{games:,}**게임 | **{wins}**승 | 승률 {win_rate_text}\n"
+        f"📊 평균 **{avg_rank:.1f}**등 | 🥇 탑1 **{top1_rate*100:.1f}%** | 🥉 탑3 **{top3_rate*100:.1f}%**\n"
+        f"🗡️ 평균 킬 **{avg_kills:.1f}** | 어시 **{avg_assists:.1f}** | 사냥 **{avg_hunts:.1f}**"
     )
     container_items.append(ui.TextDisplay(stats_text))
 
@@ -92,7 +92,7 @@ def create_rank_layout(nickname: str, stats: Dict[str, Any], client: ERClient) -
                 char_win_rate = (char_wins / char_games * 100) if char_games > 0 else 0.0
 
                 char_name = get_character_name(char_code)
-                char_lines.append(f"**{char_name}** — {char_games}게임 · 승률 {char_win_rate:.0f}%")
+                char_lines.append(f"**{char_name}** {char_games}게임, 승률 {char_win_rate:.0f}%")
             container_items.append(ui.TextDisplay("### 🎭 모스트 캐릭터\n" + "\n".join(char_lines)))
 
     # 푸터

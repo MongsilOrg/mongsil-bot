@@ -137,23 +137,23 @@ def create_bot_info_layout(bot_info: Optional[BotInfo], client: ERClient) -> ui.
         ui.TextDisplay(
             f"### 🤖 몽실봇\n"
             f"이터널 리턴 전적 검색 및 정보 봇\n"
-            f"-# 서비스 개시 2023.06.15 · D+{days_since_start}"
+            f"-# 서비스 개시 2023.06.15, D+{days_since_start}"
         ),
         ui.Separator(),
         ui.TextDisplay(
             f"📊 **봇 현황**\n"
-            f"🏠 서버 **{bot_info.guild_count:,}**개 · "
-            f"👥 유저 **{bot_info.user_count:,}**명 · "
+            f"🏠 서버 **{bot_info.guild_count:,}**개 | "
+            f"👥 유저 **{bot_info.user_count:,}**명 | "
             f"💬 채널 **{bot_info.channel_count:,}**개"
         ),
         ui.TextDisplay(
             f"⚙️ **시스템**\n"
-            f"⏱️ 업타임 **{uptime_str}** · "
-            f"🧠 메모리 **{bot_info.ram_usage:.1f}**MB · "
+            f"⏱️ 업타임 **{uptime_str}** | "
+            f"🧠 메모리 **{bot_info.ram_usage:.1f}**MB | "
             f"{ping_emoji} 핑 **{ping_ms:.0f}**ms"
         ),
         ui.TextDisplay(
-            f"-# Python {bot_info.python_version} · Discord.py {bot_info.discord_version} · 개발 {bot_info.developer_tag}"
+            f"-# Python {bot_info.python_version} | Discord.py {bot_info.discord_version} | 개발 {bot_info.developer_tag}"
         ),
         ui.Separator(visible=False),
         ui.TextDisplay(footer_text(client)),

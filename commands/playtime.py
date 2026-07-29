@@ -170,15 +170,15 @@ def create_playtime_layout(client, nickname: str, stats: PlayTimeStats) -> ui.La
     children = []
 
     # Header
-    children.append(ui.TextDisplay(f"### ⏱️ {nickname}님의 플레이 타임\n{activity_level} · 최근 7일간 게임 활동"))
+    children.append(ui.TextDisplay(f"### ⏱️ {nickname}님의 플레이 타임\n{activity_level}, 최근 7일간 게임 활동"))
     children.append(ui.Separator())
 
     # Summary stats - two clean lines
-    summary = f"🎮 **{stats.games_played}**게임 · 총 **{format_duration(stats.total_seconds)}** 플레이"
+    summary = f"🎮 **{stats.games_played}**게임 | 총 **{format_duration(stats.total_seconds)}** 플레이"
     summary += f"\n📊 일일 평균 **{format_duration(daily_avg)}**"
     if stats.games_played > 0:
         avg_game = stats.total_seconds // stats.games_played
-        summary += f" · 게임당 평균 **{format_duration(avg_game)}**"
+        summary += f" | 게임당 평균 **{format_duration(avg_game)}**"
     children.append(ui.TextDisplay(summary))
     children.append(ui.Separator())
 

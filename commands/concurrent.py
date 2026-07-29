@@ -188,7 +188,7 @@ def create_concurrent_layout(count_info: Optional[PlayerCount], client: ERClient
         children.append(ui.Separator())
         children.append(ui.TextDisplay(
             f"🏆 **24시간 최고**\n"
-            f"**{stats['max_count']:,}명** · {max_time_str} 기록"
+            f"**{stats['max_count']:,}명**, {max_time_str} 기록"
         ))
 
     children.append(ui.Separator(visible=False))
