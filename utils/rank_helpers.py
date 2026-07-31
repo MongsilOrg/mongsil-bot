@@ -37,12 +37,13 @@ async def fetch_user_stats_solo(
         api_base = config.api_url.replace('/v1', '/v2')
         url = f"{api_base}/user/stats/uid/{user_id}/{season_id}/3"
 
-        data = await client.api_client.get(url, use_cache=use_cache)
+        data = await client.api_client.get(url, use_cache=use_cache, ttl=300)
 
         if data and data.get('code') == 200:
             stats_list = data.get('userStats', [])
             if not stats_list:
-                raise NotFoundError("유저 통계 없음", "유저의 랭크 게임 기록이 없어요.\n닉네임을 다시 확인해주세요.")
+                # uid까지 찾힌 유저라 닉네임 문제는 아니다
+                raise NotFoundError("유저 통계 없음", "유저의 랭크 게임 기록이 없어요.")
 
             # 랭크 솔로 모드 통계 찾기 (matchingMode=3, matchingTeamMode=3)
             for stats in stats_list:
@@ -83,7 +84,7 @@ async def fetch_ranking_data(client: ERClient, season_id: int, use_cache: bool =
     try:
         url = f"{config.api_url}/rank/top/{season_id}/3/10"
 
-        data = await client.api_client.get(url, use_cache=use_cache)
+        data = await client.api_client.get(url, use_cache=use_cache, ttl=300)
 
         if data and data.get('code') == 200:
             top_ranks = data.get('topRanks', [])

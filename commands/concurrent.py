@@ -1,7 +1,7 @@
 import os
 import pickle
 from collections import deque
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import NamedTuple, Optional
 
 import discord
@@ -22,6 +22,11 @@ logger = get_logger('동접')
 # Steam API URL
 STEAM_API_URL = 'https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/'
 
+
+def _as_utc(t: datetime) -> datetime:
+    """naive 시각은 과거 저장분(서버 로컬=UTC)으로 간주한다."""
+    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+
 class ConcurrentData:
     """동시접속자 데이터 관리 클래스"""
 
@@ -40,21 +45,27 @@ class ConcurrentData:
         self.data.append((time, count))
 
     def get_statistics(self):
-        """통계를 계산합니다 (필요할 때만 호출)"""
-        if not self.data:
+        """최근 24시간 범위의 통계를 계산합니다.
+
+        deque는 개수(1440) 기준이라 수집 공백이 있으면 24시간 밖 데이터가
+        남아 있을 수 있어 시간으로 한 번 더 거른다.
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        recent = [(t, c) for t, c in self.data if _as_utc(t) >= cutoff]
+
+        if not recent:
             return {
                 'max_count': 0,
                 'max_time': None,
                 'data_count': 0
             }
 
-        # 최대값 계산
-        max_data = max(self.data, key=lambda x: (x[1], x[0]))
+        max_data = max(recent, key=lambda x: (x[1], _as_utc(x[0])))
 
         return {
             'max_count': max_data[1],
-            'max_time': max_data[0],
-            'data_count': len(self.data)
+            'max_time': _as_utc(max_data[0]),
+            'data_count': len(recent)
         }
 
     def save_to_file(self):
@@ -174,20 +185,20 @@ def create_concurrent_layout(count_info: Optional[PlayerCount], client: ERClient
             client
         )
 
-    current_time_str = datetime.now().strftime("%H시 %M분")
+    now_ts = int(datetime.now(timezone.utc).timestamp())
     stats = concurrent_data.get_statistics()
 
     children = [
         ui.TextDisplay("### 이터널 리턴 동시 접속자"),
         ui.Separator(),
-        ui.TextDisplay(f"## {count_info.current:,}명\n-# {current_time_str} 기준"),
+        ui.TextDisplay(f"## {count_info.current:,}명\n-# <t:{now_ts}:t> 기준"),
     ]
 
     if stats['data_count'] > 0 and stats['max_time']:
-        max_time_str = stats['max_time'].strftime("%H시 %M분")
+        max_ts = int(stats['max_time'].timestamp())
         children.append(ui.Separator())
         children.append(ui.TextDisplay(
-            f"24시간 최고 **{stats['max_count']:,}**명, {max_time_str}"
+            f"24시간 최고 **{stats['max_count']:,}**명, <t:{max_ts}:t>"
         ))
 
     children.append(ui.Separator(visible=False))
@@ -256,11 +267,11 @@ class Concurrent(commands.Cog):
 
             count = await get_current_player_count()
             if count is not None:
-                current_time = datetime.now()
-                concurrent_data.add_data(current_time, count)
+                concurrent_data.add_data(datetime.now(timezone.utc), count)
 
                 # 5분마다만 파일에 저장 (I/O 부하 감소)
-                if len(concurrent_data.data) % 5 == 0:
+                # len(deque) 기준은 deque가 가득 차면 매분 저장으로 변질된다
+                if self.save_concurrent_data.current_loop % 5 == 4:
                     concurrent_data.save_to_file()
             else:
                 logger.warning("동시접속자 수를 가져올 수 없어 수집을 건너뜁니다.")

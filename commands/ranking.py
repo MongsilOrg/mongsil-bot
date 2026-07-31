@@ -87,33 +87,47 @@ class PaginationView(CooldownLayoutView):
 
         custom_id = interaction.data.get("custom_id")
         if custom_id == "prev" and self.current_page > 1:
-            self.current_page -= 1
+            target_page = self.current_page - 1
         elif custom_id == "next" and self.current_page < self.total_pages:
-            self.current_page += 1
+            target_page = self.current_page + 1
         else:
             await interaction.response.defer()
             return False
 
-        await self.update_page(interaction)
+        await self.update_page(interaction, target_page)
         return False
 
-    async def update_page(self, interaction: discord.Interaction):
-        """페이지를 업데이트합니다. 캐시에 없으면 lazy-load합니다."""
-        try:
-            await interaction.response.defer()
+    async def update_page(self, interaction: discord.Interaction, target_page: int):
+        """페이지를 업데이트합니다. 캐시에 없으면 lazy-load합니다.
 
-            users = self.page_cache.get(self.current_page)
+        페이지 번호는 로드 성공 후에만 반영한다. 실패한 페이지를 캐시하면
+        뷰 수명 동안 그 페이지가 빈 채로 박제되므로 캐시하지 않는다.
+        """
+        await interaction.response.defer()
+        try:
+            users = self.page_cache.get(target_page)
             if users is None:
-                users = await get_ranking_info(self.client, self.season_id, self.current_page, fetch_stats=True)
-                self.page_cache[self.current_page] = users or []
+                users = await get_ranking_info(self.client, self.season_id, target_page, fetch_stats=True)
+                if users:
+                    self.page_cache[target_page] = users
 
             if not users:
+                await self._send_page_error(interaction)
                 return
 
+            self.current_page = target_page
             self.build_layout()
             await interaction.edit_original_response(view=self, attachments=[])
         except Exception as e:
             logger.error(f"페이지 업데이트 중 오류 발생: {e}", exc_info=True)
+            await self._send_page_error(interaction)
+
+    async def _send_page_error(self, interaction: discord.Interaction):
+        try:
+            layout = create_error_layout("페이지 로드 실패", "랭킹 페이지를 불러오지 못했어요.\n잠시 후 다시 시도해주세요.", self.client)
+            await interaction.followup.send(view=layout, ephemeral=True)
+        except Exception:
+            pass
 
 
 async def get_ranking_info(client: ERClient, season_id: int, page: int = 1, fetch_stats: bool = True) -> Optional[List[RankUser]]:
@@ -138,20 +152,27 @@ async def get_ranking_info(client: ERClient, season_id: int, page: int = 1, fetc
                 for ud in page_data
             ]
 
+        # 10명 동시 요청이면 api_client 세마포어(10)를 독점해 다른 명령이 굶는다
+        fetch_limit = asyncio.Semaphore(5)
+
         async def fetch_single_user(user_data):
-            """개별 유저의 통계를 가져옵니다."""
+            """개별 유저의 통계를 가져옵니다. 실패한 유저는 기본값으로 둔다."""
             nickname = user_data.get('nickname', '')
             user_id = None
             stats = None
 
-            if nickname:
-                user_id = await client.get_user_nickname(nickname)
+            async with fetch_limit:
+                if nickname:
+                    try:
+                        user_id = await client.get_user_nickname(nickname)
+                    except Exception:
+                        user_id = None
 
-            if user_id:
-                try:
-                    stats = await fetch_user_stats_solo(client, user_id, season_id, use_cache=True)
-                except Exception:
-                    stats = None
+                if user_id:
+                    try:
+                        stats = await fetch_user_stats_solo(client, user_id, season_id, use_cache=True)
+                    except Exception:
+                        stats = None
 
             games = wins = 0
             avg_rank = avg_kills = 0.0
@@ -219,7 +240,7 @@ class Ranking(commands.Cog):
             return
 
         view = PaginationView(self.client, season_id, total_pages, first_page_users, season_name)
-        await interaction.edit_original_response(view=view, embeds=[], attachments=[])
+        view.message = await interaction.edit_original_response(view=view, embeds=[], attachments=[])
 
 async def setup(client: ERClient):
     """명령어를 등록합니다."""

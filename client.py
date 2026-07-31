@@ -32,6 +32,9 @@ class ERClient(commands.Bot):
         self.start_time = None  # main.py에서 설정됨
         self.cogs_ready = asyncio.Event()
 
+        # 이름만 on_tree_error인 메서드는 아무 데도 연결되지 않는다. 명시적으로 바인딩해야 동작.
+        self.tree.on_error = self.on_tree_error
+
     @property
     def uptime(self) -> Optional[timedelta]:
         """봇의 업타임을 반환합니다."""
@@ -40,22 +43,28 @@ class ERClient(commands.Bot):
         return datetime.now() - self.start_time
 
     async def get_user_nickname(self, nickname: str) -> Optional[str]:
-        """닉네임으로 유저 UID를 조회합니다."""
-        try:
-            url = f"{config.api_url}/user/nickname"
-            response = await self.api_client.get(url, params={'query': nickname})
+        """닉네임으로 유저 UID를 조회합니다.
 
-            if response and response.get('code') == 200:
-                user_data = response.get('user')
-                if user_data:
-                    # API 문서와 실제 응답의 필드명 차이 대응
-                    for field in ('userNum', 'userId', 'uid'):
-                        if field in user_data:
-                            return user_data[field]
-            return None
-        except Exception as e:
-            logger.warning(f"닉네임 조회 중 오류 ({nickname}): {e}")
-            return None
+        None은 '없는 닉네임'만 의미한다. API 장애는 예외로 전파해
+        '닉네임을 확인해주세요' 오안내가 나가지 않게 한다.
+        """
+        url = f"{config.api_url}/user/nickname"
+        params = {'query': nickname}
+        # 닉네임-uid 매핑은 사실상 불변이라 길게 캐시
+        response = await self.api_client.get(url, params=params, ttl=86400)
+
+        if response and response.get('code') == 200:
+            user_data = response.get('user')
+            if user_data:
+                # API 문서와 실제 응답의 필드명 차이 대응
+                for field in ('userNum', 'userId', 'uid'):
+                    if field in user_data:
+                        return user_data[field]
+
+        # '없음' 응답(HTTP 200 + code 404)까지 24시간 캐시하면
+        # 신규 생성이나 개명 직후 유저가 하루 동안 조회 불가가 된다
+        self.api_client.uncache(url, params=params)
+        return None
 
     async def setup_hook(self) -> None:
         try:
@@ -120,7 +129,11 @@ class ERClient(commands.Bot):
         elif isinstance(error, app_commands.CommandOnCooldown):
             error_message = f"명령어를 너무 자주 사용했어요. {error.retry_after:.2f}초 후에 다시 시도해주세요."
 
-        logger.error(f"명령어 실행 오류: {error}", exc_info=True)
+        # 권한/쿨다운은 예상된 유저 조건이라 WARNING (Sentry는 ERROR 이상만 수집)
+        if isinstance(error, (app_commands.CheckFailure, app_commands.CommandOnCooldown)):
+            logger.warning(f"명령어 차단: {error}")
+        else:
+            logger.error(f"명령어 실행 오류: {error}", exc_info=True)
 
         try:
             layout = create_error_layout("오류", error_message)

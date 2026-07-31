@@ -156,7 +156,7 @@ class Rank(commands.Cog):
         if not stats:
             raise NotFoundError(
                 f"랭크 정보가 없습니다: {validated_nickname}",
-                f"'{validated_nickname}' 유저의 {season_name} 랭크 게임 기록이 없어요.\n닉네임을 다시 확인해주세요."
+                f"'{validated_nickname}' 유저의 {season_name} 랭크 게임 기록이 없어요."
             )
 
         view = create_rank_layout(validated_nickname, stats, self.client)

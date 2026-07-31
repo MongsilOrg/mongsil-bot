@@ -3,7 +3,7 @@
 """
 import discord
 import json
-import asyncio
+import os
 import re
 from typing import Optional, Set, Dict
 from pathlib import Path
@@ -78,11 +78,13 @@ def _clean_webhook_cache():
         _webhook_cache_times.pop(oldest_channel, None)
 
 def save_disabled_servers(disabled_servers: Set[int]) -> bool:
-    """비활성화된 서버 목록을 저장합니다."""
+    """비활성화된 서버 목록을 저장합니다. 파손 방지를 위해 임시 파일 후 원자적 교체."""
     global _disabled_servers_cache, _settings_last_modified
     try:
-        with SETTINGS_PATH.open('w', encoding='utf-8') as file:
+        temp_path = SETTINGS_PATH.with_suffix('.json.tmp')
+        with temp_path.open('w', encoding='utf-8') as file:
             json.dump(list(disabled_servers), file, ensure_ascii=False, indent=2)
+        os.replace(temp_path, SETTINGS_PATH)
         _disabled_servers_cache = disabled_servers.copy()
         _settings_last_modified = SETTINGS_PATH.stat().st_mtime
         return True
@@ -93,20 +95,18 @@ def save_disabled_servers(disabled_servers: Set[int]) -> bool:
 async def disable_emoji_zoom_and_notify(guild_id: int, channel: discord.TextChannel) -> None:
     """이모지 확대 기능을 비활성화하고 알림을 보냅니다."""
     global _webhook_permission_notified
-    
-    # 이미 알림을 보낸 서버는 건너뛰기
-    if guild_id in _webhook_permission_notified:
-        return
-    
-    # 서버를 비활성화 목록에 추가
-    disabled_servers = load_disabled_servers()
+
+    # 비활성화는 항상 수행한다. 알림 캐시로 비활성화까지 건너뛰면
+    # 저장 실패 후 같은 서버에서 Forbidden을 무한 반복한다.
+    disabled_servers = set(load_disabled_servers())
     disabled_servers.add(guild_id)
     save_disabled_servers(disabled_servers)
-    
-    # 알림 캐시에 추가
+
+    # 알림은 서버당 한 번만
+    if guild_id in _webhook_permission_notified:
+        return
     _webhook_permission_notified.add(guild_id)
-    
-    # 안내 메시지 전송
+
     try:
         from utils.layouts import create_error_layout
         layout = create_error_layout(
@@ -154,8 +154,9 @@ async def get_or_create_webhook(channel: discord.TextChannel) -> Optional[discor
         return webhook
 
     except discord.Forbidden:
-        # 웹훅 권한이 없는 경우 서버 비활성화 및 알림
-        await disable_emoji_zoom_and_notify(channel.guild.id, channel)
+        # 길드 권한 자체가 없으면 서버 비활성화, 채널 오버라이드 탓이면 그 채널만 조용히 스킵
+        if not channel.guild.me.guild_permissions.manage_webhooks:
+            await disable_emoji_zoom_and_notify(channel.guild.id, channel)
         return None
     except discord.NotFound:
         _webhook_cache.pop(channel_id, None)
@@ -193,8 +194,11 @@ def extract_emoji_info(content: str) -> Optional[tuple[str, str, bool]]:
     return None
 
 async def process_emoji_zoom(message: discord.Message) -> None:
-    """이모지 확대 기능을 처리합니다. (최고 성능)"""
-    # 초고속 필터링
+    """이모지 확대 기능을 처리합니다."""
+    # 웹훅을 만들 수 있는 채널만 (스레드 등은 webhooks API가 없다)
+    if not isinstance(message.channel, (discord.TextChannel, discord.VoiceChannel)):
+        return
+
     guild_id = message.guild.id
     if guild_id in load_disabled_servers():
         return
@@ -230,30 +234,40 @@ async def process_emoji_zoom(message: discord.Message) -> None:
     
     # 이모지 URL 생성 (원본 화질)
     emoji_url = f"{EMOJI_CDN_BASE}{emoji.id}.{'gif' if emoji.animated else 'png'}"
-    
+
     # 프로필 사진 URL 처리 (1024px, GIF 미지원)
     avatar_url = str(message.author.display_avatar.replace(size=AVATAR_SIZE, format='png'))
-    
-    # 웹훅 전송 (최고 성능 - 병렬 처리)
-    try:
-        # 메시지 삭제와 웹훅 전송을 동시 실행
-        await asyncio.gather(
-            message.delete(),
-            webhook.send(
-                content=emoji_url,
-                username=message.author.display_name,
-                avatar_url=avatar_url,
-                wait=False
-            ),
-            return_exceptions=True
+
+    async def send_zoom(hook: discord.Webhook) -> None:
+        await hook.send(
+            content=emoji_url,
+            username=message.author.display_name,
+            avatar_url=avatar_url,
+            wait=False
         )
-    except discord.Forbidden:
-        pass  # 권한 없음 - 조용히 처리
+
+    # 확대본 전송이 성공한 뒤에만 원본을 지운다. 동시에 실행하면
+    # 전송 실패 시 유저 메시지만 사라진다.
+    try:
+        await send_zoom(webhook)
     except discord.NotFound:
-        # 웹훅 삭제됨 - 캐시에서 제거
+        # 웹훅이 수동 삭제된 경우: 캐시 비우고 한 번 재생성해 재시도
         _webhook_cache.pop(message.channel.id, None)
+        _webhook_cache_times.pop(message.channel.id, None)
+        webhook = await get_or_create_webhook(message.channel)
+        if not webhook:
+            return
+        try:
+            await send_zoom(webhook)
+        except Exception:
+            return
     except Exception:
-        pass  # 기타 오류 - 조용히 처리 (로깅 제거로 성능 향상)
+        return
+
+    try:
+        await message.delete()
+    except (discord.Forbidden, discord.NotFound):
+        pass  # 메시지 관리 권한이 없으면 원본과 확대본이 함께 남는다
 
 async def cleanup_emoji_zoom_cache():
     """이모지 확대 관련 캐시를 정리합니다."""

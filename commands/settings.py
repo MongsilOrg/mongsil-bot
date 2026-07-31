@@ -97,6 +97,7 @@ class Settings(commands.Cog):
         """서버의 봇 설정을 관리합니다."""
         view = SettingsView(interaction.guild_id, self.client)
         await interaction.response.send_message(view=view)
+        view.message = await interaction.original_response()
 
 async def setup(client: ERClient):
     """명령어를 등록합니다."""

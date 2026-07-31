@@ -1,4 +1,5 @@
 import discord
+import pytz
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, NamedTuple
 from client import ERClient
@@ -6,11 +7,13 @@ from discord import app_commands, ui
 from discord.ext import commands
 from utils.config import config
 from utils.layouts import create_loading_layout, footer_text
-from utils.errors import handle_errors, validate_nickname
+from utils.errors import handle_errors, validate_nickname, NotFoundError
 from utils.logging_config import get_logger
 from utils.emojis import EMOJIS
 
 logger = get_logger('플탐')
+
+KST = pytz.timezone('Asia/Seoul')
 
 class GameStats(NamedTuple):
     """게임 통계 정보를 저장하는 네임드 튜플"""
@@ -53,7 +56,7 @@ async def get_user_games(client, user_id: str, start_date: datetime.date) -> Lis
             if next_cursor:
                 url += f"?next={next_cursor}"
 
-            data = await client.api_client.get(url, use_cache=True)
+            data = await client.api_client.get(url, use_cache=True, ttl=300)
             if data:
                 current_games = data.get('userGames', data.get('games', []))
 
@@ -194,28 +197,32 @@ def create_daily_chart(daily_stats: Dict[datetime.date, int]) -> str:
     return "\n".join(chart_lines)
 
 async def get_playtime_info(client: ERClient, nickname: str) -> Optional[PlayTimeStats]:
-    """플레이어의 플레이 타임 정보를 가져옵니다."""
-    try:
-        # 유저 UID 조회
-        user_id = await client.get_user_nickname(nickname)
-        if not user_id:
-            return None
+    """플레이어의 플레이 타임 정보를 가져옵니다.
 
-        # 오늘을 포함한 최근 7일 날짜 리스트 생성 (오늘부터 6일 전까지)
-        today = datetime.now().date()
-        dates = [(today - timedelta(days=i)) for i in range(7)]  # 오늘부터 6일 전까지
-        start_date = dates[-1]  # 가장 오래된 날짜
+    없는 닉네임은 NotFoundError, 유저는 있는데 기록이 없으면 None.
+    API 오류는 전파해 handle_errors가 안내한다.
+    """
+    # 유저 UID 조회
+    user_id = await client.get_user_nickname(nickname)
+    if not user_id:
+        raise NotFoundError(
+            f"유저를 찾을 수 없습니다: {nickname}",
+            f"'{nickname}' 유저를 찾을 수 없어요.\n닉네임을 다시 확인해주세요."
+        )
 
-        # 게임 기록 조회
-        games = await get_user_games(client, user_id, start_date)
-        if not games:
-            return None
+    # 오늘을 포함한 최근 7일 날짜 리스트 생성 (오늘부터 6일 전까지)
+    # 게임 날짜(startDtm)가 KST라 버킷도 KST 기준이어야 자정~오전 게임이 누락되지 않는다
+    today = datetime.now(KST).date()
+    dates = [(today - timedelta(days=i)) for i in range(7)]  # 오늘부터 6일 전까지
+    start_date = dates[-1]  # 가장 오래된 날짜
 
-        # 통계 계산
-        return calculate_play_time_stats(games, dates)
-    except Exception as e:
-        logger.error(f"플레이 타임 정보 조회 중 오류: {e}", exc_info=True)
+    # 게임 기록 조회
+    games = await get_user_games(client, user_id, start_date)
+    if not games:
         return None
+
+    # 통계 계산
+    return calculate_play_time_stats(games, dates)
 
 class Playtime(commands.Cog):
     def __init__(self, client: ERClient):
@@ -249,8 +256,7 @@ class Playtime(commands.Cog):
             container = ui.Container(accent_colour=discord.Colour.blurple())
             container.add_item(ui.TextDisplay(
                 f"### {validated_nickname}님의 플레이 기록\n"
-                "최근 7일간 플레이 기록이 없어요.\n"
-                "닉네임을 다시 확인해주세요."
+                "최근 7일간 플레이 기록이 없어요."
             ))
             container.add_item(ui.Separator(visible=False))
             container.add_item(ui.TextDisplay(footer_text(self.client)))

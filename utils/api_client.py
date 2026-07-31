@@ -36,7 +36,6 @@ class OptimizedAPIClient:
             self._session = aiohttp.ClientSession(
                 timeout=timeout,
                 connector=connector,
-                headers={'x-api-key': config.api_key}
             )
         return self._session
     
@@ -54,17 +53,23 @@ class OptimizedAPIClient:
             return f"{url}?{param_str}"
         return url
     
-    def _is_cache_valid(self, cache_key: str) -> bool:
+    def _is_cache_valid(self, cache_key: str, ttl: int) -> bool:
         """캐시가 유효한지 확인합니다."""
         if cache_key not in self._cache:
             return False
-        
+
         cache_time = self._cache_times.get(cache_key)
         if not cache_time:
             return False
-        
-        return datetime.now() - cache_time < timedelta(seconds=config.cache_ttl)
+
+        return datetime.now() - cache_time < timedelta(seconds=ttl)
     
+    def uncache(self, url: str, params: Optional[Dict] = None):
+        """특정 요청의 캐시를 지운다. 부정 응답을 장기 캐시하지 않기 위한 용도."""
+        cache_key = self._get_cache_key(url, params)
+        self._cache.pop(cache_key, None)
+        self._cache_times.pop(cache_key, None)
+
     def _set_cache(self, cache_key: str, data: Any):
         """캐시를 설정합니다. (LRU)"""
         # 기존 키가 있으면 삭제 (재정렬을 위해)
@@ -83,52 +88,65 @@ class OptimizedAPIClient:
             del self._cache[oldest_key]
             del self._cache_times[oldest_key]
     
-    async def get(self, url: str, params: Optional[Dict] = None, use_cache: bool = True, _retry_count: int = 0) -> Dict[str, Any]:
-        """GET 요청을 수행합니다."""
+    async def get(self, url: str, params: Optional[Dict] = None, use_cache: bool = True, ttl: Optional[int] = None) -> Dict[str, Any]:
+        """GET 요청을 수행합니다. ttl은 이 요청의 캐시 유효 시간(초), 없으면 config.cache_ttl."""
         MAX_RETRIES = 3
 
         cache_key = self._get_cache_key(url, params)
 
         # 캐시 확인
-        if use_cache and self._is_cache_valid(cache_key):
+        if use_cache and self._is_cache_valid(cache_key, ttl or config.cache_ttl):
             # LRU: 최근 사용 항목으로 이동
             self._cache.move_to_end(cache_key)
             return self._cache[cache_key]
 
-        # 세마포어를 사용하여 동시 요청 제한
-        async with self._semaphore:
-            session = await self.get_session()
+        # 429 대기는 세마포어 밖에서 한다. 슬롯을 쥔 채 재시도를 기다리면
+        # 동시 429 시 전 요청이 슬롯을 물고 서로를 기다리는 교착이 된다.
+        for attempt in range(MAX_RETRIES + 1):
+            retry_after = None
 
-            try:
-                async with session.get(url, params=params) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        if use_cache:
-                            self._set_cache(cache_key, data)
-                        return data
-                    elif response.status == 429:
-                        if _retry_count >= MAX_RETRIES:
+            async with self._semaphore:
+                session = await self.get_session()
+
+                # API 키는 bser 요청에만 실어 다른 호스트(Steam, 동물 API 등)로 새지 않게 한다
+                headers = {'x-api-key': config.api_key} if url.startswith('https://open-api.bser.io') else None
+
+                try:
+                    async with session.get(url, params=params, headers=headers) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            if use_cache:
+                                self._set_cache(cache_key, data)
+                            return data
+                        elif response.status == 429:
+                            if attempt >= MAX_RETRIES:
+                                raise APIError(
+                                    f"API Rate limit 초과 (최대 {MAX_RETRIES}회 재시도 후 실패)",
+                                    "API 요청 한도를 초과했어요. 잠시 후 다시 시도해주세요."
+                                )
+                            # Retry-After는 HTTP-date 형식일 수 있어 int 실패 시 기본값 사용
+                            try:
+                                retry_after = int(response.headers.get('Retry-After', config.retry_delay))
+                            except ValueError:
+                                retry_after = config.retry_delay
+                            logger.warning(f"API Rate limit - {retry_after}초 대기 (재시도 {attempt + 1}/{MAX_RETRIES})")
+                        else:
+                            error_text = await response.text()
+                            logger.error(f"API 요청 실패: {response.status}")
                             raise APIError(
-                                f"API Rate limit 초과 (최대 {MAX_RETRIES}회 재시도 후 실패)",
-                                "API 요청 한도를 초과했어요. 잠시 후 다시 시도해주세요."
+                                f"API 요청 실패: {response.status} - {error_text}",
+                                "API 요청 중 오류가 발생했어요. 잠시 후 다시 시도해주세요."
                             )
-                        retry_after = int(response.headers.get('Retry-After', config.retry_delay))
-                        logger.warning(f"API Rate limit - {retry_after}초 대기 (재시도 {_retry_count + 1}/{MAX_RETRIES})")
-                        await asyncio.sleep(retry_after)
-                        return await self.get(url, params, use_cache, _retry_count + 1)
-                    else:
-                        error_text = await response.text()
-                        logger.error(f"API 요청 실패: {response.status}")
-                        raise APIError(
-                            f"API 요청 실패: {response.status} - {error_text}",
-                            "API 요청 중 오류가 발생했어요. 잠시 후 다시 시도해주세요."
-                        )
-            except aiohttp.ClientError as e:
-                logger.error(f"네트워크 오류: {redact_secrets(e)}")
-                raise APIError(f"네트워크 오류: {redact_secrets(e)}", "네트워크 오류가 발생했어요. 잠시 후 다시 시도해주세요.")
-            except Exception as e:
-                logger.error(f"예상치 못한 오류: {redact_secrets(e)}")
-                raise BotError(f"예상치 못한 오류: {redact_secrets(e)}", "서버 오류가 발생했어요. 잠시 후 다시 시도해주세요.")
+                except aiohttp.ClientError as e:
+                    logger.error(f"네트워크 오류: {redact_secrets(e)}")
+                    raise APIError(f"네트워크 오류: {redact_secrets(e)}", "네트워크 오류가 발생했어요. 잠시 후 다시 시도해주세요.")
+                except (APIError, BotError):
+                    raise
+                except Exception as e:
+                    logger.error(f"예상치 못한 오류: {redact_secrets(e)}")
+                    raise BotError(f"예상치 못한 오류: {redact_secrets(e)}", "서버 오류가 발생했어요. 잠시 후 다시 시도해주세요.")
+
+            await asyncio.sleep(retry_after)
     
     async def batch_get(self, requests: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """여러 요청을 배치로 처리합니다."""

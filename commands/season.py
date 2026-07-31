@@ -94,7 +94,8 @@ async def fetch_season_data(season_id: Optional[int] = None) -> Optional[Dict[st
         base_url = config.api_url.replace('/v1', '/v2')
         url = f'{base_url}/data/Season'
 
-        data = await api_client.get(url, use_cache=True)
+        # 모듈 캐시(30분)와 정렬. api_client 기본 TTL(1시간)이 더 길면 30분 갱신이 무력화된다
+        data = await api_client.get(url, use_cache=True, ttl=1800)
 
         if not data:
             logger.error("시즌 API 응답 없음")
