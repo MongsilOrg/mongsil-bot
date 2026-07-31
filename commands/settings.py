@@ -57,8 +57,8 @@ class SettingsView(CooldownLayoutView):
             await interaction.response.send_message(view=error_layout, ephemeral=True)
             return False
 
-        # 토글 로직
-        disabled_servers = load_disabled_servers()
+        # 토글 로직. 캐시 원본을 직접 바꾸면 저장 실패 시 메모리만 바뀐 채 남는다
+        disabled_servers = set(load_disabled_servers())
         current_enabled = self.guild_id not in disabled_servers
 
         if current_enabled:

@@ -91,13 +91,13 @@ client = ERClient(intents=intents)
 
 @client.event
 async def on_ready():
-    """봇이 준비되었을 때 실행됩니다."""
-    client.start_time = datetime.now()
+    """봇이 준비되었을 때 실행됩니다. 재연결 시에도 다시 불린다."""
+    if client.start_time is None:
+        client.start_time = datetime.now()
+        await cleanup_emoji_zoom_cache()
+
     logger.info(f"{client.user} 온라인")
-    
-    # 이모지 확대 캐시 정리 (봇 재시작 시)
-    await cleanup_emoji_zoom_cache()
-    
+
     # 태스크 시작
     if not client.change_status.is_running():
         client.change_status.start()
@@ -114,7 +114,8 @@ async def on_message(message: discord.Message):
 
 if __name__ == "__main__":
     try:
-        client.run(config.bot_token)
+        # log_handler 기본값은 루트 로거를 덮어쓰므로 자체 설정을 유지한다
+        client.run(config.bot_token, log_handler=None)
     except KeyboardInterrupt:
         logger.warning("봇이 사용자에 의해 중단되었습니다.")
     except Exception as e:
