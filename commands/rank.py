@@ -27,9 +27,6 @@ def create_rank_layout(nickname: str, stats: Dict[str, Any], client: ERClient) -
     wins = int(stats.get('totalWins', 0))
     avg_rank = float(stats.get('averageRank', 0.0))
     avg_kills = float(stats.get('averageKills', 0.0))
-    avg_assists = float(stats.get('averageAssistants', 0.0))
-    avg_hunts = float(stats.get('averageHunts', 0.0))
-    top1_rate = float(stats.get('top1', 0.0))
     top3_rate = float(stats.get('top3', 0.0))
 
     # API에서 실제 닉네임 가져오기 (대소문자 구분 등)
@@ -57,7 +54,7 @@ def create_rank_layout(nickname: str, stats: Dict[str, Any], client: ERClient) -
     header_text = (
         f"## {actual_nickname}\n"
         f"**{tier}** | {mmr:,} RP\n"
-        f"-# #{rank:,}등 / {rank_size:,}명 중, 상위 {top_percentage:.2f}%"
+        f"-# {rank:,}등, 상위 {top_percentage:.2f}%"
     )
     container_items.append(
         ui.Section(
@@ -68,10 +65,10 @@ def create_rank_layout(nickname: str, stats: Dict[str, Any], client: ERClient) -
 
     container_items.append(ui.Separator())
 
+    # 탑1은 솔로 승률과 같은 지표라 표시하지 않는다
     stats_text = (
-        f"**{games:,}**게임 | **{wins:,}**승 | 승률 **{win_rate:.0f}%**\n"
-        f"평균 **{avg_rank:.1f}**등 | 탑1 **{top1_rate*100:.0f}%** | 탑3 **{top3_rate*100:.0f}%**\n"
-        f"평균 킬 **{avg_kills:.1f}** | 어시 **{avg_assists:.1f}** | 사냥 **{avg_hunts:.1f}**"
+        f"**{games:,}**게임 | 승률 **{win_rate:.0f}%** | 탑3 **{top3_rate*100:.0f}%**\n"
+        f"평균 **{avg_rank:.1f}**등 | 평균 킬 **{avg_kills:.1f}**"
     )
     container_items.append(ui.TextDisplay(stats_text))
 
