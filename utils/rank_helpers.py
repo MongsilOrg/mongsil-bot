@@ -42,7 +42,7 @@ async def fetch_user_stats_solo(
         if data and data.get('code') == 200:
             stats_list = data.get('userStats', [])
             if not stats_list:
-                raise NotFoundError("유저 통계 없음", f"유저의 랭크 게임 기록이 없습니다.")
+                raise NotFoundError("유저 통계 없음", "유저의 랭크 게임 기록이 없어요.\n닉네임을 다시 확인해주세요.")
 
             # 랭크 솔로 모드 통계 찾기 (matchingMode=3, matchingTeamMode=3)
             for stats in stats_list:
@@ -56,16 +56,16 @@ async def fetch_user_stats_solo(
 
             # 통계가 있는데 랭크 모드 항목만 없는 건 유저 조건이 아니라 응답 형식 이상.
             raise APIError("유저 통계 형식 불일치: 랭크 모드 항목 없음",
-                           "통계를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.")
+                           "통계를 불러오지 못했어요. 잠시 후 다시 시도해주세요.")
         else:
             error_msg = data.get('message') if data else 'No response'
             logger.error(f"유저 통계 API 오류: {error_msg}")
-            raise APIError(f"API 오류: {error_msg}", "API 요청 중 오류가 발생했습니다.")
+            raise APIError(f"API 오류: {error_msg}", "API 요청 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.")
     except (APIError, NotFoundError):
         raise
     except Exception as e:
         logger.error(f"유저 통계 조회 중 오류 발생: {e}", exc_info=True)
-        raise APIError(f"네트워크 오류: {e}", "네트워크 연결 중 오류가 발생했습니다.")
+        raise APIError(f"네트워크 오류: {e}", "네트워크 오류가 발생했어요. 잠시 후 다시 시도해주세요.")
 
 
 async def fetch_ranking_data(client: ERClient, season_id: int, use_cache: bool = True) -> Optional[List[Dict]]:

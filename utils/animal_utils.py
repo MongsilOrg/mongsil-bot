@@ -46,19 +46,19 @@ def create_animal_error_layout(error_type: str, animal_name: str, client=None) -
     """동물 관련 에러 LayoutView를 생성합니다."""
     if error_type == "not_found":
         return create_error_layout(
-            f"{animal_name} 사진을 찾을 수 없습니다",
-            f"현재 {animal_name} 사진을 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.",
+            f"{animal_name} 사진 조회 실패",
+            f"{animal_name} 사진을 가져올 수 없어요.\n잠시 후 다시 시도해주세요.",
             client
         )
     elif error_type == "download_failed":
         return create_error_layout(
             "이미지 다운로드 실패",
-            f"{animal_name} 이미지를 다운로드할 수 없습니다.\n네트워크 연결을 확인해주세요.",
+            f"{animal_name} 사진을 다운로드할 수 없어요.\n잠시 후 다시 시도해주세요.",
             client
         )
     else:
         return create_error_layout(
             "오류 발생",
-            f"{animal_name} 사진을 가져오는 중 오류가 발생했습니다.",
+            f"{animal_name} 사진을 가져오는 중 오류가 발생했어요.\n잠시 후 다시 시도해주세요.",
             client
         )

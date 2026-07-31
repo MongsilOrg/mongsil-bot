@@ -21,7 +21,6 @@ _NOISE_SUBSTRINGS = (
     "Cannot connect to host",
     "Temporary failure in name resolution",
     "네트워크 오류",
-    "연결 중 오류",
 )
 _NOISE_EXC_NAMES = (
     "TimeoutError", "ConnectTimeoutError", "ReadTimeout", "ConnectionError",
@@ -31,7 +30,7 @@ _NOISE_EXC_NAMES = (
 
 
 def _sentry_before_send(event, hint):
-    """예상된 사용자 에러·일시적 네트워크 에러는 Sentry로 보내지 않는다.
+    """예상된 사용자 에러와 일시적 네트워크 에러는 Sentry로 보내지 않는다.
 
     exc_info 뿐 아니라 LoggingIntegration이 잡는 logger.error 문자열도 검사한다.
     BotError는 예외로 전파되지 않고 문자열로만 로깅되므로 exc_info가 없다.

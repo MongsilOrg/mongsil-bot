@@ -94,7 +94,7 @@ def create_bot_info_layout(bot_info: Optional[BotInfo], client: ERClient) -> ui.
     if not bot_info:
         return create_error_layout(
             "봇 정보",
-            "봇 정보를 가져올 수 없습니다.",
+            "봇 정보를 가져올 수 없어요.\n잠시 후 다시 시도해주세요.",
             client
         )
 
@@ -135,21 +135,19 @@ def create_bot_info_layout(bot_info: Optional[BotInfo], client: ERClient) -> ui.
 
     container = ui.Container(
         ui.TextDisplay(
-            f"### 🤖 몽실봇\n"
+            f"### 몽실봇\n"
             f"이터널 리턴 전적 검색 및 정보 봇\n"
             f"-# 서비스 개시 2023.06.15, D+{days_since_start}"
         ),
         ui.Separator(),
         ui.TextDisplay(
-            f"📊 **봇 현황**\n"
-            f"🏠 서버 **{bot_info.guild_count:,}**개 | "
-            f"👥 유저 **{bot_info.user_count:,}**명 | "
-            f"💬 채널 **{bot_info.channel_count:,}**개"
+            f"서버 **{bot_info.guild_count:,}**개 | "
+            f"유저 **{bot_info.user_count:,}**명 | "
+            f"채널 **{bot_info.channel_count:,}**개"
         ),
         ui.TextDisplay(
-            f"⚙️ **시스템**\n"
-            f"⏱️ 업타임 **{uptime_str}** | "
-            f"🧠 메모리 **{bot_info.ram_usage:.1f}**MB | "
+            f"업타임 **{uptime_str}** | "
+            f"메모리 **{bot_info.ram_usage:.1f}**MB | "
             f"{ping_emoji} 핑 **{ping_ms:.0f}**ms"
         ),
         ui.TextDisplay(
@@ -185,9 +183,9 @@ class Info(commands.Cog):
 
     @app_commands.command(
         name="정보",
-        description="봇의 정보를 확인합니다."
+        description="봇 정보 조회"
     )
-    @handle_errors(user_message="봇 정보를 가져오는 중 오류가 발생했습니다.")
+    @handle_errors(user_message="봇 정보를 가져오는 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.")
     async def info_command(self, interaction: discord.Interaction):
         """봇의 정보를 표시합니다."""
         client: ERClient = interaction.client

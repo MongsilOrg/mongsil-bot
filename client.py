@@ -113,12 +113,12 @@ class ERClient(commands.Bot):
         logger.info(f"서버 제거: {guild.name} (ID: {guild.id})")
 
     async def on_tree_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
-        error_message = "명령어 실행 중 오류가 발생했습니다."
+        error_message = "명령어 실행 중 오류가 발생했어요. 잠시 후 다시 시도해주세요."
 
         if isinstance(error, app_commands.CheckFailure):
-            error_message = "이 명령어를 실행할 권한이 없습니다."
+            error_message = "이 명령어를 실행할 권한이 없어요."
         elif isinstance(error, app_commands.CommandOnCooldown):
-            error_message = f"명령어를 너무 자주 사용했습니다. {error.retry_after:.2f}초 후에 다시 시도해주세요."
+            error_message = f"명령어를 너무 자주 사용했어요. {error.retry_after:.2f}초 후에 다시 시도해주세요."
 
         logger.error(f"명령어 실행 오류: {error}", exc_info=True)
 

@@ -10,9 +10,9 @@ from client import ERClient
 
 from utils.config import config
 from utils.layouts import create_error_layout, footer_text
-from utils.errors import handle_errors, APIError
+from utils.errors import handle_errors
 from utils.logging_config import get_logger
-from utils.emojis import SEASON_EMOJIS, SEASON_PROGRESS_EMOJIS, EMOJIS
+from utils.emojis import EMOJIS
 
 logger = get_logger('시즌')
 
@@ -252,7 +252,7 @@ async def get_season_info() -> Optional[SeasonInfo]:
         logger.error(f"시즌 정보 계산 중 오류: {e}", exc_info=True)
         return None
 
-def _calculate_season_progress(season_info: SeasonInfo) -> Tuple[float, str, str, str]:
+def _calculate_season_progress(season_info: SeasonInfo) -> Tuple[float, str, str]:
     """
     시즌 진행도를 계산합니다.
 
@@ -260,7 +260,7 @@ def _calculate_season_progress(season_info: SeasonInfo) -> Tuple[float, str, str
         season_info: 시즌 정보
 
     Returns:
-        (진행도 퍼센트, 남은 시간 문자열, 상태 이모지, 상태 텍스트) 튜플
+        (진행도 퍼센트, 남은 시간 문자열, 상태 텍스트) 튜플
     """
     now = datetime.now(KST)
 
@@ -271,11 +271,11 @@ def _calculate_season_progress(season_info: SeasonInfo) -> Tuple[float, str, str
         hours, remainder = divmod(time_until_start.seconds, 3600)
         minutes, seconds = divmod(remainder, 60)
         remaining_time = f"{days}일 {hours}시간 {minutes}분 {seconds}초"
-        return 0.0, remaining_time, SEASON_PROGRESS_EMOJIS['before_start'], "시즌 시작 전"
+        return 0.0, remaining_time, "시즌 시작 전"
 
     # 시즌이 이미 종료된 경우
     if now > season_info.end_date:
-        return 100.0, "0일 0시간 0분 0초", SEASON_PROGRESS_EMOJIS['finished'], "시즌 종료됨"
+        return 100.0, "0일 0시간 0분 0초", "시즌 종료됨"
 
     # 진행도 계산
     total_duration = season_info.end_date - season_info.start_date
@@ -290,21 +290,16 @@ def _calculate_season_progress(season_info: SeasonInfo) -> Tuple[float, str, str
 
     remaining_time = f"{days}일 {hours}시간 {minutes}분 {seconds}초"
 
-    # 진행도에 따른 상태 이모지
     if progress < 25:
-        status_emoji = SEASON_PROGRESS_EMOJIS['early']
         status_text = "시즌 초반"
     elif progress < 50:
-        status_emoji = SEASON_PROGRESS_EMOJIS['first_half']
         status_text = "시즌 전반"
     elif progress < 75:
-        status_emoji = SEASON_PROGRESS_EMOJIS['second_half']
         status_text = "시즌 후반"
     else:
-        status_emoji = SEASON_PROGRESS_EMOJIS['final']
         status_text = "시즌 마무리"
 
-    return progress, remaining_time, status_emoji, status_text
+    return progress, remaining_time, status_text
 
 def _create_progress_bar(progress: float, length: int = 20) -> str:
     """
@@ -337,21 +332,13 @@ def create_season_layout(season_info: Optional[SeasonInfo], client: ERClient) ->
     if not season_info:
         return create_error_layout(
             "시즌 정보 오류",
-            "현재 시즌 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.",
+            "현재 시즌 정보를 가져올 수 없어요.\n잠시 후 다시 시도해주세요.",
             client
         )
 
     # 시즌 진행도 계산
-    progress, remaining_time, status_emoji, status_text = _calculate_season_progress(season_info)
+    progress, remaining_time, status_text = _calculate_season_progress(season_info)
     progress_bar = _create_progress_bar(progress)
-
-    # 시즌 타입에 따른 이모지 선택
-    if "EA" in season_info.name:
-        season_emoji = SEASON_EMOJIS['ea']
-    elif "프리" in season_info.name:
-        season_emoji = SEASON_EMOJIS['pre_season']
-    else:
-        season_emoji = SEASON_EMOJIS['regular']
 
     # 시즌 코드명이 있으면 이름과 함께 표시 (예: 정규 시즌 11 (쁘띠 미뇽))
     codename = SEASON_CODENAMES.get(season_info.number)
@@ -382,15 +369,15 @@ def create_season_layout(season_info: Optional[SeasonInfo], client: ERClient) ->
 
     container = ui.Container(
         ui.TextDisplay(
-            f"### {season_emoji} {name_display}\n"
-            f"{status_emoji} **{status_text}**"
+            f"### {name_display}\n"
+            f"{status_text}"
         ),
         ui.Separator(),
         ui.TextDisplay(
-            f"📅 **{start_date_str}** ~ **{end_date_str}**\n"
+            f"**{start_date_str}** ~ **{end_date_str}**\n"
             f"-# {elapsed_days}일째 / 총 {total_days}일"
         ),
-        ui.TextDisplay(f"⏰ **{time_label}**: {remaining_time}"),
+        ui.TextDisplay(f"{time_label} **{remaining_time}**"),
         ui.Separator(),
         ui.TextDisplay(f"{progress_bar}  **{progress:.1f}%**"),
         ui.Separator(visible=False),
@@ -424,7 +411,7 @@ class Season(commands.Cog):
         self.client = client
 
     @app_commands.command(name="시즌", description="현재 시즌 정보 조회")
-    @handle_errors(user_message="시즌 정보를 가져오는 중 오류가 발생했습니다.")
+    @handle_errors(user_message="시즌 정보를 가져오는 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.")
     async def season_command(self, interaction: discord.Interaction):
         """
         현재 시즌 정보를 보여줍니다.

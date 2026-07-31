@@ -60,7 +60,7 @@ class PaginationView(CooldownLayoutView):
 
         users = self.page_cache.get(self.current_page, [])
 
-        children = [ui.TextDisplay(f"### 🏆 {self.season_name} KR 랭킹")]
+        children = [ui.TextDisplay(f"### {self.season_name} KR 랭킹")]
         children.append(ui.Separator())
 
         for i, u in enumerate(users):
@@ -183,20 +183,20 @@ class Ranking(commands.Cog):
     def __init__(self, client: ERClient):
         self.client = client
 
-    @app_commands.command(name="랭킹", description="랭킹을 보여줍니다")
-    @handle_errors(user_message="랭킹 정보를 가져오는 중 오류가 발생했습니다.")
+    @app_commands.command(name="랭킹", description="KR 상위 100명 랭킹 조회")
+    @handle_errors(user_message="랭킹 정보를 가져오는 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.")
     async def ranking_command(self, interaction: discord.Interaction):
         """랭킹을 보여줍니다."""
         loading = create_loading_layout(
             "랭킹 조회 중...",
-            "상위 100명의 랭킹 데이터를 불러오고 있습니다.",
+            "상위 100명의 랭킹 데이터를 불러오고 있어요.",
             self.client
         )
         await interaction.response.send_message(view=loading)
 
         season_id = await get_current_season_id()
         if not season_id:
-            error_layout = create_error_layout("시즌 정보 오류", "현재 시즌 정보를 가져올 수 없습니다.", self.client)
+            error_layout = create_error_layout("시즌 정보 오류", "현재 시즌 정보를 가져올 수 없어요.\n잠시 후 다시 시도해주세요.", self.client)
             await interaction.edit_original_response(view=error_layout, embeds=[], attachments=[])
             return
 
@@ -206,7 +206,7 @@ class Ranking(commands.Cog):
 
         ranking_data = await fetch_ranking_data(self.client, season_id, use_cache=True)
         if not ranking_data:
-            error_layout = create_error_layout("오류 발생", "랭킹 정보를 가져올 수 없습니다.", self.client)
+            error_layout = create_error_layout("오류 발생", "랭킹 정보를 가져올 수 없어요.\n잠시 후 다시 시도해주세요.", self.client)
             await interaction.edit_original_response(view=error_layout, embeds=[], attachments=[])
             return
 
@@ -214,7 +214,7 @@ class Ranking(commands.Cog):
 
         first_page_users = await get_ranking_info(self.client, season_id, 1, fetch_stats=True)
         if not first_page_users:
-            error_layout = create_error_layout("오류 발생", "랭킹 정보를 가져올 수 없습니다.", self.client)
+            error_layout = create_error_layout("오류 발생", "랭킹 정보를 가져올 수 없어요.\n잠시 후 다시 시도해주세요.", self.client)
             await interaction.edit_original_response(view=error_layout, embeds=[], attachments=[])
             return
 

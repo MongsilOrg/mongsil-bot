@@ -110,7 +110,7 @@ class OptimizedAPIClient:
                         if _retry_count >= MAX_RETRIES:
                             raise APIError(
                                 f"API Rate limit 초과 (최대 {MAX_RETRIES}회 재시도 후 실패)",
-                                "API 요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요."
+                                "API 요청 한도를 초과했어요. 잠시 후 다시 시도해주세요."
                             )
                         retry_after = int(response.headers.get('Retry-After', config.retry_delay))
                         logger.warning(f"API Rate limit - {retry_after}초 대기 (재시도 {_retry_count + 1}/{MAX_RETRIES})")
@@ -121,14 +121,14 @@ class OptimizedAPIClient:
                         logger.error(f"API 요청 실패: {response.status}")
                         raise APIError(
                             f"API 요청 실패: {response.status} - {error_text}",
-                            "API 요청 중 오류가 발생했습니다."
+                            "API 요청 중 오류가 발생했어요. 잠시 후 다시 시도해주세요."
                         )
             except aiohttp.ClientError as e:
                 logger.error(f"네트워크 오류: {redact_secrets(e)}")
-                raise APIError(f"네트워크 오류: {redact_secrets(e)}", "네트워크 연결 중 오류가 발생했습니다.")
+                raise APIError(f"네트워크 오류: {redact_secrets(e)}", "네트워크 오류가 발생했어요. 잠시 후 다시 시도해주세요.")
             except Exception as e:
                 logger.error(f"예상치 못한 오류: {redact_secrets(e)}")
-                raise BotError(f"예상치 못한 오류: {redact_secrets(e)}", "서버 오류가 발생했습니다.")
+                raise BotError(f"예상치 못한 오류: {redact_secrets(e)}", "서버 오류가 발생했어요. 잠시 후 다시 시도해주세요.")
     
     async def batch_get(self, requests: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """여러 요청을 배치로 처리합니다."""

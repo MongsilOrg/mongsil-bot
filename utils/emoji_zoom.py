@@ -108,28 +108,12 @@ async def disable_emoji_zoom_and_notify(guild_id: int, channel: discord.TextChan
     
     # 안내 메시지 전송
     try:
-        embed = discord.Embed(
-            title="⚠️ 이모지 확대 기능 비활성화",
-            description="관리자 권한이 없어 이모지 확대 기능을 비활성화했습니다.",
-            color=0xff6b6b
+        from utils.layouts import create_error_layout
+        layout = create_error_layout(
+            "이모지 확대 비활성화",
+            "봇에 웹후크 관리 권한이 없어 이모지 확대를 껐어요.\n몽실봇 역할에 웹후크 관리 권한을 준 뒤 `/설정`에서 다시 켜주세요."
         )
-        embed.add_field(
-            name="🔧 해결 방법",
-            value="**1단계: 관리자 권한 부여**\n"
-                  "• 서버 설정 → 역할 → 몽실봇 → 권한\n"
-                  "• **관리자** 권한을 활성화\n\n"
-                  "**2단계: 서비스 재활성화**\n"
-                  "• `/설정` 명령어로 다시 활성화 가능",
-            inline=False
-        )
-        embed.add_field(
-            name="📋 필요한 권한",
-            value="**관리자 권한** - 몽실봇 서비스 이용에 필수",
-            inline=False
-        )
-        embed.set_footer(text="몽실봇 • 권한 설정 후 다시 활성화해주세요")
-        
-        await channel.send(embed=embed)
+        await channel.send(view=layout)
     except Exception as e:
         logger.error(f"웹훅 권한 오류 알림 전송 실패: {e}")
 

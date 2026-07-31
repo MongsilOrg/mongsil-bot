@@ -5,7 +5,7 @@ from client import ERClient
 from discord import app_commands, ui
 from discord.ext import commands
 from utils.config import config
-from utils.layouts import create_error_layout, create_loading_layout, footer_text
+from utils.layouts import create_loading_layout, footer_text
 from utils.errors import handle_errors, validate_nickname
 from utils.logging_config import get_logger
 from utils.emojis import EMOJIS
@@ -121,15 +121,6 @@ def calculate_play_time_stats(games: List[GameStats], dates: List[datetime.date]
         most_played_time=most_played_time
     )
 
-def format_time(seconds: int) -> str:
-    """초 단위 시간을 HH:MM:SS 형식으로 변환합니다."""
-    if seconds < 0:
-        return "00:00:00"
-
-    hours, remainder = divmod(seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
-    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-
 def format_duration(seconds: int) -> str:
     """초 단위 시간을 사용자 친화적인 형식으로 변환합니다."""
     if seconds < 60:
@@ -145,24 +136,8 @@ def format_duration(seconds: int) -> str:
         else:
             return f"{hours}시간"
 
-def get_activity_level(total_seconds: int) -> str:
-    """플레이 시간에 따른 활동 레벨을 반환합니다."""
-    if total_seconds == 0:
-        return "😴 휴식 중"
-    elif total_seconds < 14400:  # 4시간 미만 (일일 평균 34분 미만)
-        return "🌱 초보자"
-    elif total_seconds < 36000:  # 10시간 미만 (일일 평균 1시간 26분 미만)
-        return "🎯 적당히"
-    elif total_seconds < 72000:  # 20시간 미만 (일일 평균 2시간 51분 미만)
-        return "🔥 열정적"
-    elif total_seconds < 126000:  # 35시간 미만 (일일 평균 5시간 미만)
-        return "⚡ 하드코어"
-    else:  # 35시간 이상 (일일 평균 5시간 이상)
-        return "🚀 전설"
-
 def create_playtime_layout(client, nickname: str, stats: PlayTimeStats) -> ui.LayoutView:
     """플레이 타임 LayoutView를 생성합니다."""
-    activity_level = get_activity_level(stats.total_seconds)
     daily_avg = stats.total_seconds // 7
     daily_chart = create_daily_chart(stats.daily_stats)
 
@@ -170,12 +145,12 @@ def create_playtime_layout(client, nickname: str, stats: PlayTimeStats) -> ui.La
     children = []
 
     # Header
-    children.append(ui.TextDisplay(f"### ⏱️ {nickname}님의 플레이 타임\n{activity_level}, 최근 7일간 게임 활동"))
+    children.append(ui.TextDisplay(f"### {nickname}님의 플레이 타임\n-# 최근 7일"))
     children.append(ui.Separator())
 
     # Summary stats - two clean lines
-    summary = f"🎮 **{stats.games_played}**게임 | 총 **{format_duration(stats.total_seconds)}** 플레이"
-    summary += f"\n📊 일일 평균 **{format_duration(daily_avg)}**"
+    summary = f"**{stats.games_played}**게임 | 총 **{format_duration(stats.total_seconds)}** 플레이"
+    summary += f"\n일일 평균 **{format_duration(daily_avg)}**"
     if stats.games_played > 0:
         avg_game = stats.total_seconds // stats.games_played
         summary += f" | 게임당 평균 **{format_duration(avg_game)}**"
@@ -183,7 +158,7 @@ def create_playtime_layout(client, nickname: str, stats: PlayTimeStats) -> ui.La
     children.append(ui.Separator())
 
     # Daily chart
-    children.append(ui.TextDisplay(f"### 📊 일별 플레이 타임\n{daily_chart}"))
+    children.append(ui.TextDisplay(daily_chart))
 
     children.append(ui.Separator(visible=False))
     children.append(ui.TextDisplay(footer_text(client)))
@@ -248,7 +223,7 @@ class Playtime(commands.Cog):
 
     @app_commands.command(name="플탐", description="최근 7일 플레이 타임 조회")
     @app_commands.describe(닉네임="조회할 유저의 닉네임 (2-20자, 특수문자 제외)")
-    @handle_errors(user_message="플레이 타임 정보를 가져오는 중 오류가 발생했습니다.")
+    @handle_errors(user_message="플레이 타임 정보를 가져오는 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.")
     async def playtime(
         self,
         interaction: discord.Interaction,
@@ -261,7 +236,7 @@ class Playtime(commands.Cog):
         # 로딩 메시지 표시
         loading_view = create_loading_layout(
             "플레이 타임 조회 중...",
-            f"`{validated_nickname}`님의 게임 데이터를 분석하고 있습니다.",
+            f"`{validated_nickname}`님의 게임 기록을 불러오고 있어요.",
             self.client
         )
         await interaction.response.send_message(view=loading_view)
@@ -273,17 +248,9 @@ class Playtime(commands.Cog):
             no_data_view = ui.LayoutView()
             container = ui.Container(accent_colour=discord.Colour.blurple())
             container.add_item(ui.TextDisplay(
-                f"### 😴 {validated_nickname}님의 플레이 기록\n"
-                "최근 7일간 플레이 기록이 없습니다.\n\n"
-                "💡 **다음과 같은 이유일 수 있습니다:**\n"
-                "• 최근에 게임을 하지 않았음\n"
-                "• 닉네임이 정확하지 않음\n"
-                "• 게임 데이터가 아직 업데이트되지 않음"
-            ))
-            container.add_item(ui.TextDisplay(
-                f"🔍 **확인 방법**\n"
-                f"• [DAK.GG](https://dak.gg/er/players/{validated_nickname})에서 닉네임 확인\n"
-                "• 게임 내에서 최근 플레이 기록 확인"
+                f"### {validated_nickname}님의 플레이 기록\n"
+                "최근 7일간 플레이 기록이 없어요.\n"
+                "닉네임을 다시 확인해주세요."
             ))
             container.add_item(ui.Separator(visible=False))
             container.add_item(ui.TextDisplay(footer_text(self.client)))
@@ -291,7 +258,7 @@ class Playtime(commands.Cog):
 
             dakgg_button = ui.Button(
                 style=discord.ButtonStyle.link,
-                label="DAK.GG 바로가기",
+                label="DAK.GG",
                 emoji=EMOJIS['chart'],
                 url=f"https://dak.gg/er/players/{validated_nickname}"
             )
