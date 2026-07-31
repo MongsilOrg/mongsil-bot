@@ -1,11 +1,10 @@
 import discord
-from discord import Interaction
 from discord.ext import commands, tasks
 from discord import app_commands
 from typing import Optional
 from datetime import datetime, timedelta
+import math
 import os
-import asyncio
 
 from utils.config import config
 from utils.layouts import create_error_layout
@@ -20,7 +19,6 @@ class ERClient(commands.Bot):
         if intents is None:
             intents = discord.Intents.default()
             intents.message_content = True
-            intents.members = True
             intents.presences = False
 
         super().__init__(command_prefix="!", intents=intents)
@@ -30,7 +28,6 @@ class ERClient(commands.Bot):
 
         self.api_client = api_client
         self.start_time = None  # main.py에서 설정됨
-        self.cogs_ready = asyncio.Event()
 
         # 이름만 on_tree_error인 메서드는 아무 데도 연결되지 않는다. 명시적으로 바인딩해야 동작.
         self.tree.on_error = self.on_tree_error
@@ -127,7 +124,7 @@ class ERClient(commands.Bot):
         if isinstance(error, app_commands.CheckFailure):
             error_message = "이 명령어를 실행할 권한이 없어요."
         elif isinstance(error, app_commands.CommandOnCooldown):
-            error_message = f"명령어를 너무 자주 사용했어요. {error.retry_after:.2f}초 후에 다시 시도해주세요."
+            error_message = f"명령어를 너무 자주 사용했어요. {math.ceil(error.retry_after)}초 후에 다시 시도해주세요."
 
         # 권한/쿨다운은 예상된 유저 조건이라 WARNING (Sentry는 ERROR 이상만 수집)
         if isinstance(error, (app_commands.CheckFailure, app_commands.CommandOnCooldown)):

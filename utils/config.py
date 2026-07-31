@@ -17,8 +17,6 @@ class BotConfig:
     api_key: str
 
     # 선택적 설정 (기본값 포함)
-    footer_icon: Optional[str] = None
-    embed_color: int = 0x3498db
     retry_delay: int = 1
     cache_ttl: int = 3600
     api_url: str = 'https://open-api.bser.io/v1'
@@ -26,15 +24,12 @@ class BotConfig:
     appid_erbs: int = 1049590
 
     # 개발자 정보
-    developer_id: str = '602522819594551306'
     developer_tag: str = 'mongsil.dev'
-    developer_email: str = 'mail@mongsil.dev'
     support_server: str = 'https://discord.gg/4QSFVsNNkE'
     bot_invite: str = 'https://discord.com/oauth2/authorize?client_id=1118780504490131557'
 
     # UI 타임아웃 설정 (초 단위)
     view_timeout_interactive: int = 300  # 상호작용 버튼 (5분)
-    view_timeout_static: Optional[int] = None  # 정적 링크 버튼 (무제한)
 
     @classmethod
     def from_env(cls) -> 'BotConfig':
@@ -52,7 +47,6 @@ class BotConfig:
         return cls(
             bot_token=required_vars['BOT_TOKEN'],
             api_key=required_vars['API_KEY'],
-            footer_icon=os.getenv('FOOTER_ICON'),
             steam_api_key=os.getenv('STEAM_API_KEY'),
         )
 

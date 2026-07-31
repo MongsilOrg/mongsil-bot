@@ -253,7 +253,7 @@ async def get_season_info() -> Optional[SeasonInfo]:
         logger.error(f"시즌 정보 계산 중 오류: {e}", exc_info=True)
         return None
 
-def _calculate_season_progress(season_info: SeasonInfo) -> Tuple[float, str, str]:
+def _calculate_season_progress(season_info: SeasonInfo) -> Tuple[float, str]:
     """
     시즌 진행도를 계산합니다.
 
@@ -261,35 +261,19 @@ def _calculate_season_progress(season_info: SeasonInfo) -> Tuple[float, str, str
         season_info: 시즌 정보
 
     Returns:
-        (진행도 퍼센트, 남은 시간 문자열, 상태 텍스트) 튜플
+        (진행도 퍼센트, 상태 텍스트) 튜플
     """
     now = datetime.now(KST)
 
-    # 시즌이 아직 시작되지 않은 경우
     if now < season_info.start_date:
-        time_until_start = season_info.start_date - now
-        days = time_until_start.days
-        hours, remainder = divmod(time_until_start.seconds, 3600)
-        minutes, seconds = divmod(remainder, 60)
-        remaining_time = f"{days}일 {hours}시간 {minutes}분 {seconds}초"
-        return 0.0, remaining_time, "시즌 시작 전"
+        return 0.0, "시즌 시작 전"
 
-    # 시즌이 이미 종료된 경우
     if now > season_info.end_date:
-        return 100.0, "0일 0시간 0분 0초", "시즌 종료됨"
+        return 100.0, "시즌 종료됨"
 
-    # 진행도 계산
     total_duration = season_info.end_date - season_info.start_date
     elapsed_duration = now - season_info.start_date
     progress = min(max(elapsed_duration.total_seconds() / total_duration.total_seconds() * 100, 0), 100)
-
-    # 남은 시간 계산
-    time_left = season_info.end_date - now
-    days = time_left.days
-    hours, remainder = divmod(time_left.seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
-
-    remaining_time = f"{days}일 {hours}시간 {minutes}분 {seconds}초"
 
     if progress < 25:
         status_text = "시즌 초반"
@@ -300,7 +284,7 @@ def _calculate_season_progress(season_info: SeasonInfo) -> Tuple[float, str, str
     else:
         status_text = "시즌 마무리"
 
-    return progress, remaining_time, status_text
+    return progress, status_text
 
 def _create_progress_bar(progress: float, length: int = 20) -> str:
     """
@@ -338,15 +322,22 @@ def create_season_layout(season_info: Optional[SeasonInfo], client: ERClient) ->
         )
 
     # 시즌 진행도 계산
-    progress, remaining_time, status_text = _calculate_season_progress(season_info)
+    progress, status_text = _calculate_season_progress(season_info)
     progress_bar = _create_progress_bar(progress)
 
     # 시즌 코드명이 있으면 이름과 함께 표시 (예: 정규 시즌 11 (쁘띠 미뇽))
     codename = SEASON_CODENAMES.get(season_info.number)
     name_display = f"{season_info.name} ({codename})" if codename else season_info.name
 
-    # 시즌 시작 전이면 '남은 시간' 대신 '시작까지'로 표기
-    time_label = "시작까지" if status_text == "시즌 시작 전" else "남은 시간"
+    # 시즌 시작 전이면 시작 시점까지, 아니면 종료 시점까지 상대 시간 표시
+    # Discord 타임스탬프라 자동 갱신되고 시간대 문제도 없다
+    if status_text == "시즌 시작 전":
+        time_label, target_ts = "시작까지", int(season_info.start_date.timestamp())
+    elif status_text == "시즌 종료됨":
+        # 과거 시각은 'N일 전'으로 렌더링되므로 '남은 시간' 라벨과 모순되지 않게
+        time_label, target_ts = "종료", int(season_info.end_date.timestamp())
+    else:
+        time_label, target_ts = "남은 시간", int(season_info.end_date.timestamp())
 
     # 시즌 기간 정보 (간결한 형식)
     start_date_str = season_info.start_date.strftime("%m/%d %H시")
@@ -378,7 +369,7 @@ def create_season_layout(season_info: Optional[SeasonInfo], client: ERClient) ->
             f"**{start_date_str}** ~ **{end_date_str}**\n"
             f"-# {elapsed_days}일째 / 총 {total_days}일"
         ),
-        ui.TextDisplay(f"{time_label} **{remaining_time}**"),
+        ui.TextDisplay(f"{time_label} <t:{target_ts}:R>"),
         ui.Separator(),
         ui.TextDisplay(f"{progress_bar}  **{progress:.1f}%**"),
         ui.Separator(visible=False),

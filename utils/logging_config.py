@@ -72,19 +72,6 @@ def setup_logging(
     
     # urllib3 로거 레벨 조정 (aiohttp 내부에서 사용)
     logging.getLogger('urllib3').setLevel(logging.WARNING)
-    
-    # 프로덕션에서는 특정 모듈들의 로그 레벨 조정
-    if not is_dev:
-        # 명령어 관련 로거들 - 콘솔에서는 WARNING 이상만
-        command_loggers = [
-            '정보', '랭크', '랭킹', '설정', '동접', '플탐', '시즌'
-        ]
-        for logger_name in command_loggers:
-            logger = logging.getLogger(logger_name)
-            logger.setLevel(logging.WARNING)
-        
-        # API 클라이언트 로거
-        logging.getLogger('utils.api_client').setLevel(logging.WARNING)
 
 def get_logger(name: str) -> logging.Logger:
     """이름을 가진 로거를 반환합니다."""

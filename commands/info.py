@@ -13,10 +13,7 @@ from client import ERClient
 from utils.config import config
 from utils.layouts import create_error_layout, footer_text
 from utils.errors import handle_errors
-from utils.logging_config import get_logger
 from utils.emojis import EMOJIS, PING_EMOJIS
-
-logger = get_logger('정보')
 
 class BotInfo(NamedTuple):
     """봇 정보를 저장하는 네임드 튜플"""
@@ -27,67 +24,27 @@ class BotInfo(NamedTuple):
     ram_usage: float
     python_version: str
     discord_version: str
-    developer_id: str
     developer_tag: str
-    developer_email: str
     ping: float
 
 async def get_bot_info(client: ERClient) -> BotInfo:
-    """봇 정보를 수집합니다."""
-    try:
-        # 서버 수
-        guild_count = len(client.guilds)
+    """봇 정보를 수집합니다. 실패는 handle_errors가 처리한다."""
+    # 유저 수 (서버별 합산) - members 인텐트를 껐으므로 중복 제거는 불가
+    user_count = sum(guild.member_count or 0 for guild in client.guilds)
+    channel_count = sum(len(guild.channels) for guild in client.guilds if guild.channels)
+    ram_usage = psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024
 
-        # 유저 수 (중복 제외) - members 캐시가 있으면 정확한 중복 제거, 없으면 member_count 합산
-        unique_users = set()
-        fallback_count = 0
-        for guild in client.guilds:
-            if guild.members:
-                unique_users.update(member.id for member in guild.members)
-            else:
-                fallback_count += guild.member_count or 0
-        user_count = len(unique_users) + fallback_count
-
-        # 채널 수
-        channel_count = sum(len(guild.channels) for guild in client.guilds if guild.channels)
-
-        # 업타임 계산
-        uptime = client.uptime or timedelta(seconds=0)
-
-        # 메모리 사용량 (MB)
-        process = psutil.Process(os.getpid())
-        ram_usage = process.memory_info().rss / 1024 / 1024
-
-        # 봇 정보 반환
-        return BotInfo(
-            guild_count=guild_count,
-            user_count=user_count,
-            channel_count=channel_count,
-            uptime=uptime,
-            ram_usage=ram_usage,
-            python_version=sys.version.split()[0],
-            discord_version=discord.__version__,
-            developer_id=config.developer_id,
-            developer_tag=config.developer_tag,
-            developer_email=config.developer_email,
-            ping=client.latency if client.latency else 0.0
-        )
-    except Exception as e:
-        logger.error(f"봇 정보 수집 중 오류 발생: {e}", exc_info=True)
-        # 기본값 반환
-        return BotInfo(
-            guild_count=len(client.guilds),
-            user_count=sum(g.member_count or 0 for g in client.guilds),
-            channel_count=sum(len(g.channels) for g in client.guilds if g.channels),
-            uptime=client.uptime or timedelta(seconds=0),
-            ram_usage=psutil.Process().memory_info().rss / 1024 / 1024,
-            python_version=sys.version.split()[0],
-            discord_version=discord.__version__,
-            developer_id=config.developer_id,
-            developer_tag=config.developer_tag,
-            developer_email=config.developer_email,
-            ping=client.latency if client.latency else 0.0
-        )
+    return BotInfo(
+        guild_count=len(client.guilds),
+        user_count=user_count,
+        channel_count=channel_count,
+        uptime=client.uptime or timedelta(seconds=0),
+        ram_usage=ram_usage,
+        python_version=sys.version.split()[0],
+        discord_version=discord.__version__,
+        developer_tag=config.developer_tag,
+        ping=client.latency if client.latency else 0.0
+    )
 
 def create_bot_info_layout(bot_info: Optional[BotInfo], client: ERClient) -> ui.LayoutView:
     """봇 정보 LayoutView를 생성합니다."""

@@ -69,8 +69,8 @@ def create_rank_layout(nickname: str, stats: Dict[str, Any], client: ERClient) -
     container_items.append(ui.Separator())
 
     stats_text = (
-        f"**{games:,}**게임 | **{wins}**승 | 승률 **{win_rate:.1f}%**\n"
-        f"평균 **{avg_rank:.1f}**등 | 탑1 **{top1_rate*100:.1f}%** | 탑3 **{top3_rate*100:.1f}%**\n"
+        f"**{games:,}**게임 | **{wins:,}**승 | 승률 **{win_rate:.0f}%**\n"
+        f"평균 **{avg_rank:.1f}**등 | 탑1 **{top1_rate*100:.0f}%** | 탑3 **{top3_rate*100:.0f}%**\n"
         f"평균 킬 **{avg_kills:.1f}** | 어시 **{avg_assists:.1f}** | 사냥 **{avg_hunts:.1f}**"
     )
     container_items.append(ui.TextDisplay(stats_text))

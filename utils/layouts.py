@@ -6,7 +6,6 @@ import time
 import discord
 from discord import ui
 from typing import Optional
-from .config import config
 from .emojis import EMOJIS
 
 
@@ -18,9 +17,9 @@ def footer_text(client: Optional[discord.Client] = None) -> str:
 
 
 def create_error_layout(title: str, description: str, client: Optional[discord.Client] = None) -> ui.LayoutView:
-    """에러 메시지용 LayoutView를 생성합니다."""
+    """에러 메시지용 LayoutView를 생성합니다. 상태는 빨간 액센트가 전달한다."""
     view = ui.LayoutView(timeout=None)
-    items = [ui.TextDisplay(f"### ❌ {title}\n{description}")]
+    items = [ui.TextDisplay(f"### {title}\n{description}")]
     if client:
         items.append(ui.Separator(visible=False))
         items.append(ui.TextDisplay(footer_text(client)))
@@ -39,17 +38,6 @@ def create_loading_layout(title: str, description: str = "", client: Optional[di
         items.append(ui.Separator(visible=False))
         items.append(ui.TextDisplay(footer_text(client)))
     view.add_item(ui.Container(*items, accent_colour=discord.Colour.blurple()))
-    return view
-
-
-def create_success_layout(title: str, description: str, client: Optional[discord.Client] = None) -> ui.LayoutView:
-    """성공 메시지용 LayoutView를 생성합니다."""
-    view = ui.LayoutView(timeout=None)
-    items = [ui.TextDisplay(f"### ✅ {title}\n{description}")]
-    if client:
-        items.append(ui.Separator(visible=False))
-        items.append(ui.TextDisplay(footer_text(client)))
-    view.add_item(ui.Container(*items, accent_colour=discord.Colour.green()))
     return view
 
 

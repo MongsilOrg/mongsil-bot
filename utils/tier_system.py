@@ -8,8 +8,8 @@ class TierSystem:
 
     # 티어 정보를 담는 클래스 변수
     TIERS = {
-        "이터니티": {"base": 8300, "icon": "10", "special_condition": lambda rank: rank <= 300},
-        "데미갓": {"base": 8300, "icon": "9", "special_condition": lambda rank: 300 < rank <= 1000},
+        "이터니티": {"base": 8300, "icon": "10"},
+        "데미갓": {"base": 8300, "icon": "9"},
         "미스릴": {"base": 7600, "icon": "8"},
         "메테오라이트 1": {"base": 7300, "icon": "7"},
         "메테오라이트 2": {"base": 7000, "icon": "7"},
@@ -57,8 +57,9 @@ class TierSystem:
         if mmr == 0:
             return "언랭크"
 
-        # 이터니티와 데미갓은 미스릴 도달 후 순위 기반 (시즌11: 미스릴 7600 + 700)
-        if mmr >= 8300:
+        # 이터니티와 데미갓은 미스릴 RP + 700 도달 후 순위 기반
+        ranked_gate = cls.TIERS["미스릴"]["base"] + 700
+        if mmr >= ranked_gate:
             if rank <= 300:
                 return "이터니티"
             elif rank <= 1000:
@@ -67,7 +68,9 @@ class TierSystem:
 
         # 나머지 티어는 MMR만으로 판단
         for tier, info in cls.TIERS.items():
-            if mmr >= info["base"] and "special_condition" not in info:
+            if tier in ("이터니티", "데미갓"):
+                continue
+            if mmr >= info["base"]:
                 return tier
 
         return "언랭크"
@@ -84,16 +87,3 @@ class TierSystem:
             아이콘 파일명 (예: "6")
         """
         return cls.TIERS.get(tier, cls.TIERS["언랭크"])["icon"]
-
-    @classmethod
-    def get_tier_base(cls, tier: str) -> int:
-        """
-        티어의 기준 점수를 반환합니다.
-
-        Args:
-            tier: 티어 이름
-
-        Returns:
-            기준 MMR 점수
-        """
-        return cls.TIERS.get(tier, cls.TIERS["언랭크"])["base"]

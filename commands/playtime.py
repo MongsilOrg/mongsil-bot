@@ -19,18 +19,12 @@ class GameStats(NamedTuple):
     """게임 통계 정보를 저장하는 네임드 튜플"""
     date: datetime.date
     play_time: int
-    character_code: str
-    rank: int
-    game_mode: str
 
 class PlayTimeStats(NamedTuple):
     """플레이 타임 통계 정보를 저장하는 네임드 튜플"""
     total_seconds: int
     daily_stats: Dict[datetime.date, int]
     games_played: int
-    avg_duration: float
-    most_played_date: datetime.date
-    most_played_time: int
 
 # 요일 상수
 WEEKDAYS = {
@@ -74,9 +68,6 @@ async def get_user_games(client, user_id: str, start_date: datetime.date) -> Lis
                         games.append(GameStats(
                             date=game_date,
                             play_time=game.get('playTime', 0),
-                            character_code=game.get('characterCode', ''),
-                            rank=game.get('gameRank', 0),
-                            game_mode=game.get('matchingMode', '')
                         ))
                     except (ValueError, KeyError):
                         continue
@@ -103,25 +94,10 @@ def calculate_play_time_stats(games: List[GameStats], dates: List[datetime.date]
         if game.date in daily_stats:
             daily_stats[game.date] += game.play_time
 
-    total_seconds = sum(daily_stats.values())
-    games_played = len(games)
-    avg_duration = total_seconds / games_played if games_played > 0 else 0
-
-    # 가장 많이 플레이한 날 찾기
-    if daily_stats and any(time > 0 for time in daily_stats.values()):
-        most_played_date = max(daily_stats.items(), key=lambda x: x[1])[0]
-        most_played_time = daily_stats[most_played_date]
-    else:
-        most_played_date = dates[0] if dates else datetime.now().date()
-        most_played_time = 0
-
     return PlayTimeStats(
-        total_seconds=total_seconds,
+        total_seconds=sum(daily_stats.values()),
         daily_stats=daily_stats,
-        games_played=games_played,
-        avg_duration=avg_duration,
-        most_played_date=most_played_date,
-        most_played_time=most_played_time
+        games_played=len(games),
     )
 
 def format_duration(seconds: int) -> str:

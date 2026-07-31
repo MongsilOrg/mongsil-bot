@@ -1,7 +1,5 @@
 import discord
-from discord.ext import commands, tasks
 from client import ERClient
-import asyncio
 from datetime import datetime
 
 import os
@@ -82,9 +80,10 @@ setup_logging(level="INFO", log_file="bot.log")
 logger = get_logger(__name__)
 
 # Initialize bot
+# members 인텐트는 켜지 않는다. 유일한 용도가 /정보 유저 수 중복 제거였는데
+# 그 대가로 기동 시 길드 청킹에 4분 30초가 걸렸다.
 intents = discord.Intents.default()
 intents.message_content = True
-intents.members = True
 intents.presences = False
 
 client = ERClient(intents=intents)
@@ -113,22 +112,11 @@ async def on_message(message: discord.Message):
     # 이모지 확대 기능 처리
     await process_emoji_zoom(message)
 
-async def shutdown_handler():
-    """봇 종료 시 호출되는 핸들러"""
-    try:
-        await cleanup_emoji_zoom_cache()
-    except Exception as e:
-        logger.error(f"종료 처리 중 오류: {e}")
-
 if __name__ == "__main__":
     try:
-        import atexit
-        atexit.register(lambda: asyncio.run(shutdown_handler()))
-        
         client.run(config.bot_token)
     except KeyboardInterrupt:
         logger.warning("봇이 사용자에 의해 중단되었습니다.")
-        asyncio.run(shutdown_handler())
     except Exception as e:
         logger.error(f"봇 실행 중 오류 발생: {e}", exc_info=True)
         import sys

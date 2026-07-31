@@ -5,7 +5,7 @@ from discord import app_commands, ui
 from client import ERClient
 
 from utils.config import config
-from utils.layouts import create_error_layout, create_success_layout, footer_text, CooldownLayoutView
+from utils.layouts import create_error_layout, footer_text, CooldownLayoutView
 from utils.errors import handle_errors
 from utils.logging_config import get_logger
 from utils.emoji_zoom import load_disabled_servers, save_disabled_servers
@@ -75,11 +75,9 @@ class SettingsView(CooldownLayoutView):
             disabled_servers.discard(self.guild_id)
 
         if save_disabled_servers(disabled_servers):
+            # 카드가 새 상태를 바로 보여주므로 별도 완료 안내는 두지 않는다
             self.build_layout()
             await interaction.response.edit_message(view=self)
-            new_status = "비활성화" if current_enabled else "활성화"
-            success = create_success_layout("설정 변경 완료", f"이모지 확대를 {new_status}했어요.", self.client)
-            await interaction.followup.send(view=success, ephemeral=True)
         else:
             error_layout = create_error_layout("저장 실패", "설정 저장 중 오류가 발생했어요.\n잠시 후 다시 시도해주세요.", self.client)
             await interaction.response.send_message(view=error_layout, ephemeral=True)
@@ -90,7 +88,7 @@ class Settings(commands.Cog):
     def __init__(self, client: ERClient):
         self.client = client
 
-    @app_commands.command(name="설정", description="서버 봇 설정 관리 (서버 전용)")
+    @app_commands.command(name="설정", description="서버 봇 설정 관리")
     @app_commands.guild_only()
     @handle_errors(user_message="설정을 가져오는 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.")
     async def settings_command(self, interaction: discord.Interaction):

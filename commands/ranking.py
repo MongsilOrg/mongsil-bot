@@ -107,7 +107,7 @@ class PaginationView(CooldownLayoutView):
         try:
             users = self.page_cache.get(target_page)
             if users is None:
-                users = await get_ranking_info(self.client, self.season_id, target_page, fetch_stats=True)
+                users = await get_ranking_info(self.client, self.season_id, target_page)
                 if users:
                     self.page_cache[target_page] = users
 
@@ -130,7 +130,7 @@ class PaginationView(CooldownLayoutView):
             pass
 
 
-async def get_ranking_info(client: ERClient, season_id: int, page: int = 1, fetch_stats: bool = True) -> Optional[List[RankUser]]:
+async def get_ranking_info(client: ERClient, season_id: int, page: int = 1) -> Optional[List[RankUser]]:
     """랭킹 정보를 가져옵니다. 유저별 통계는 병렬로 조회합니다."""
     try:
         ranking_data = await fetch_ranking_data(client, season_id, use_cache=True)
@@ -140,17 +140,6 @@ async def get_ranking_info(client: ERClient, season_id: int, page: int = 1, fetc
         start_idx = (page - 1) * RANKS_PER_PAGE
         end_idx = min(start_idx + RANKS_PER_PAGE, len(ranking_data))
         page_data = ranking_data[start_idx:end_idx]
-
-        if not fetch_stats:
-            return [
-                RankUser(
-                    rank=ud.get('rank', 0),
-                    nickname=ud.get('nickname', ''),
-                    mmr=ud.get('mmr', 0),
-                    user_id=ud.get('nickname', ''),
-                )
-                for ud in page_data
-            ]
 
         # 10명 동시 요청이면 api_client 세마포어(10)를 독점해 다른 명령이 굶는다
         fetch_limit = asyncio.Semaphore(5)
@@ -233,7 +222,7 @@ class Ranking(commands.Cog):
 
         total_pages = math.ceil(min(len(ranking_data), TOTAL_RANKS) / RANKS_PER_PAGE)
 
-        first_page_users = await get_ranking_info(self.client, season_id, 1, fetch_stats=True)
+        first_page_users = await get_ranking_info(self.client, season_id, 1)
         if not first_page_users:
             error_layout = create_error_layout("오류 발생", "랭킹 정보를 가져올 수 없어요.\n잠시 후 다시 시도해주세요.", self.client)
             await interaction.edit_original_response(view=error_layout, embeds=[], attachments=[])

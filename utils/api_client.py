@@ -3,7 +3,7 @@
 """
 import aiohttp
 import asyncio
-from typing import Any, Optional, List, Dict
+from typing import Any, Optional, Dict
 from datetime import datetime, timedelta
 from collections import OrderedDict
 import logging
@@ -148,34 +148,5 @@ class OptimizedAPIClient:
 
             await asyncio.sleep(retry_after)
     
-    async def batch_get(self, requests: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """여러 요청을 배치로 처리합니다."""
-        async def single_request(req_data: Dict[str, Any]) -> Dict[str, Any]:
-            url = req_data['url']
-            params = req_data.get('params')
-            use_cache = req_data.get('use_cache', True)
-            return await self.get(url, params, use_cache)
-        
-        # 동시에 여러 요청 실행
-        tasks = [single_request(req) for req in requests]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # 예외 처리
-        processed_results = []
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                logger.error(f"배치 요청 실패: {result}")
-                processed_results.append(None)
-            else:
-                processed_results.append(result)
-        
-        return processed_results
-    
-    def clear_cache(self):
-        """캐시를 초기화합니다."""
-        self._cache.clear()
-        self._cache_times.clear()
-        # 캐시 초기화 로그 제거 (불필요한 정보)
-
 # 전역 API 클라이언트 인스턴스
 api_client = OptimizedAPIClient()

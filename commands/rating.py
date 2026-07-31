@@ -6,34 +6,17 @@ from typing import Optional, Dict, Tuple
 from client import ERClient
 from commands.season import get_current_season_id, get_season_info
 
-from utils.config import config
 from utils.layouts import create_error_layout, footer_text
-from utils.errors import handle_errors, APIError
+from utils.errors import handle_errors
 from utils.logging_config import get_logger
+from utils.rank_helpers import fetch_ranking_data
 
 logger = get_logger('레이팅')
-
-async def fetch_top_ranks(client: ERClient, season_id: int) -> Optional[list]:
-    """상위 랭킹 데이터를 한 번에 가져옵니다."""
-    try:
-        # KR 서버 코드 10을 하드코딩하고 한 번의 호출로 1000등까지 데이터 가져오기
-        url = f"{config.api_url}/rank/top/{season_id}/3/10"
-
-        data = await client.api_client.get(url, use_cache=False)
-        if data and data.get('code') == 200:
-            top_ranks = data.get('topRanks', [])
-            return top_ranks
-        else:
-            logger.error(f"랭킹 조회 API 오류: {data.get('message') if data else 'No response'}")
-            return None
-    except Exception as e:
-        logger.error(f"랭킹 조회 중 오류 발생: {e}", exc_info=True)
-        return None
 
 async def fetch_rating_info(client: ERClient, season_id: int) -> Tuple[Optional[Dict], Optional[Dict]]:
     """300등과 1000등의 유저 정보를 한 번의 API 호출로 가져옵니다."""
     try:
-        top_ranks = await fetch_top_ranks(client, season_id)
+        top_ranks = await fetch_ranking_data(client, season_id, use_cache=True)
         if not top_ranks:
             return None, None
 
@@ -120,7 +103,8 @@ class Rating(commands.Cog):
                 "현재 시즌 정보를 가져올 수 없어요.\n잠시 후 다시 시도해주세요.",
                 self.client
             )
-            await interaction.followup.send(view=error_view, ephemeral=True)
+            # 공개 defer 뒤 첫 followup이라 ephemeral은 적용되지 않는다
+            await interaction.followup.send(view=error_view)
             return
 
         # 시즌 정보 가져오기
@@ -136,7 +120,7 @@ class Rating(commands.Cog):
                 f"{season_name}의 레이팅 정보를 가져올 수 없어요.\n잠시 후 다시 시도해주세요.",
                 self.client
             )
-            await interaction.followup.send(view=error_view, ephemeral=True)
+            await interaction.followup.send(view=error_view)
             return
 
         view = create_rating_layout(rank_300, rank_1000, self.client, season_name)

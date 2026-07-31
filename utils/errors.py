@@ -39,6 +39,14 @@ class NotFoundError(BotError):
     pass
 
 
+def _find_interaction(args) -> Optional[discord.Interaction]:
+    """데코레이터가 감싼 함수 인자에서 Interaction을 찾는다."""
+    for arg in args:
+        if isinstance(arg, discord.Interaction):
+            return arg
+    return None
+
+
 async def _send_error(interaction: discord.Interaction, error_text: str):
     """에러 LayoutView를 전송합니다. 로딩 메시지가 있으면 교체합니다."""
     layout = create_error_layout("오류", error_text)
@@ -74,12 +82,7 @@ def handle_errors(
                     else:
                         logger.error(f"BotError in {func.__name__}: {e.message}")
 
-                interaction = None
-                for arg in args:
-                    if isinstance(arg, discord.Interaction):
-                        interaction = arg
-                        break
-
+                interaction = _find_interaction(args)
                 if interaction:
                     await _send_error(interaction, e.user_message)
 
@@ -88,12 +91,7 @@ def handle_errors(
                 if log_error:
                     logger.error(f"Unexpected error in {func.__name__}: {e}", exc_info=True)
 
-                interaction = None
-                for arg in args:
-                    if isinstance(arg, discord.Interaction):
-                        interaction = arg
-                        break
-
+                interaction = _find_interaction(args)
                 if interaction:
                     await _send_error(interaction, user_message)
 

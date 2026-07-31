@@ -2,7 +2,7 @@ import os
 import pickle
 from collections import deque
 from datetime import datetime, timedelta, timezone
-from typing import NamedTuple, Optional
+from typing import Optional
 
 import discord
 from discord import ui
@@ -31,7 +31,7 @@ class ConcurrentData:
     """동시접속자 데이터 관리 클래스"""
 
     def __init__(self, data_dir: str = 'data'):
-        # deque 사용으로 메모리 효율성 향상 (24시간 * 60분 = 1440개 최대)
+        # 24시간 * 60분 = 1440개 최대
         self.data = deque(maxlen=1440)
         self.data_dir = data_dir
         self.file_path = os.path.join(data_dir, 'concurrent_data.pkl')
@@ -115,10 +115,6 @@ class ConcurrentData:
 
 concurrent_data = ConcurrentData.load_from_file()
 
-class PlayerCount(NamedTuple):
-    """플레이어 수 정보를 저장하는 네임드 튜플"""
-    current: int
-
 async def get_current_player_count() -> Optional[int]:
     """Steam API를 통해 현재 플레이어 수를 가져옵니다."""
     try:
@@ -164,34 +160,15 @@ async def get_current_player_count() -> Optional[int]:
         logger.error(f"플레이어 수 조회 중 오류 발생: {e}", exc_info=True)
         return None
 
-async def get_player_count(client: ERClient) -> Optional[PlayerCount]:
-    """현재 플레이어 수를 가져옵니다."""
-    try:
-        current_count = await get_current_player_count()
-        if current_count is None:
-            return None
-
-        return PlayerCount(current=current_count)
-    except Exception as e:
-        logger.error(f"플레이어 수 조회 중 오류 발생: {e}", exc_info=True)
-        return None
-
-def create_concurrent_layout(count_info: Optional[PlayerCount], client: ERClient) -> ui.LayoutView:
+def create_concurrent_layout(current_count: int, client: ERClient) -> ui.LayoutView:
     """동시 접속자 수 LayoutView를 생성합니다."""
-    if not count_info:
-        return create_error_layout(
-            "동시 접속자 수 조회 실패",
-            "현재 동시 접속자 수를 가져올 수 없어요.\n잠시 후 다시 시도해주세요.",
-            client
-        )
-
     now_ts = int(datetime.now(timezone.utc).timestamp())
     stats = concurrent_data.get_statistics()
 
     children = [
         ui.TextDisplay("### 이터널 리턴 동시 접속자"),
         ui.Separator(),
-        ui.TextDisplay(f"## {count_info.current:,}명\n-# <t:{now_ts}:t> 기준"),
+        ui.TextDisplay(f"## {current_count:,}명\n-# <t:{now_ts}:t> 기준"),
     ]
 
     if stats['data_count'] > 0 and stats['max_time']:
@@ -238,21 +215,22 @@ class Concurrent(commands.Cog):
                 "Steam API 키가 설정되지 않아 동시 접속자 수를 조회할 수 없어요.\n관리자에게 문의해주세요.",
                 self.client
             )
-            await interaction.followup.send(view=layout, ephemeral=True)
+            # 공개 defer 뒤 첫 followup이라 ephemeral은 적용되지 않는다
+            await interaction.followup.send(view=layout)
             return
 
-        count_info = await get_player_count(self.client)
+        current_count = await get_current_player_count()
 
-        if not count_info:
+        if current_count is None:
             layout = create_error_layout(
                 "데이터 조회 실패",
                 "현재 동시 접속자 수를 가져올 수 없어요.\n잠시 후 다시 시도해주세요.",
                 self.client
             )
-            await interaction.followup.send(view=layout, ephemeral=True)
+            await interaction.followup.send(view=layout)
             return
 
-        layout = create_concurrent_layout(count_info, self.client)
+        layout = create_concurrent_layout(current_count, self.client)
 
         await interaction.followup.send(view=layout)
 
