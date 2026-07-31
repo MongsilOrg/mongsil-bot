@@ -44,9 +44,9 @@ def create_rank_layout(nickname: str, stats: Dict[str, Any], client: ERClient) -
     # 상위 백분율 계산
     top_percentage = (rank / rank_size * 100) if rank_size > 0 else 0.0
 
-    # 티어 아이콘 URL
+    # 티어 아이콘 URL (tier2: 정사각 패딩본, 원본 비율이면 썸네일에서 상하가 잘린다)
     icon_name = TierSystem.get_tier_icon(tier)
-    icon_url = f"https://cdn.mongsil.dev/mongsilbot/tier/{icon_name}.png"
+    icon_url = f"https://cdn.mongsil.dev/mongsilbot/tier2/{icon_name}.png"
 
     # LayoutView 구성
     view = ui.LayoutView()
