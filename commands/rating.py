@@ -4,7 +4,7 @@ from discord.ext import commands
 from discord import app_commands
 from typing import Optional, Dict, Tuple
 from client import ERClient
-from commands.season import get_current_season_id, get_season_info
+from commands.season import get_ranked_season
 
 from utils.layouts import create_error_layout, footer_text
 from utils.errors import handle_errors
@@ -96,8 +96,8 @@ class Rating(commands.Cog):
         """현재 시즌의 이터니티/데미갓 컷을 확인합니다."""
         await interaction.response.defer()
 
-        season_id = await get_current_season_id()
-        if not season_id:
+        season = await get_ranked_season()
+        if not season:
             error_view = create_error_layout(
                 "시즌 정보 오류",
                 "현재 시즌 정보를 가져올 수 없어요.\n잠시 후 다시 시도해주세요.",
@@ -106,10 +106,7 @@ class Rating(commands.Cog):
             # 공개 defer 뒤 첫 followup이라 ephemeral은 적용되지 않는다
             await interaction.followup.send(view=error_view)
             return
-
-        # 시즌 정보 가져오기
-        season_info = await get_season_info()
-        season_name = season_info.name if season_info else f"시즌 {season_id}"
+        season_id, season_name = season
 
         # 레이팅 정보 조회 (한 번의 API 호출로 300등과 1000등 모두 가져오기)
         rank_300, rank_1000 = await fetch_rating_info(self.client, season_id)

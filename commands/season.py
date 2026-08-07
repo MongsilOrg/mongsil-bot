@@ -170,6 +170,33 @@ async def get_current_season_id() -> Optional[int]:
         env_val = os.getenv('SEASON_ID')
         return int(env_val) if env_val else None
 
+async def get_ranked_season() -> Optional[Tuple[int, str]]:
+    """
+    랭크 조회에 쓸 시즌 ID와 한국어 시즌 이름을 가져옵니다.
+
+    프리시즌에는 랭킹/랭크 통계 데이터가 없으므로 직전 정규 시즌으로 대체합니다.
+
+    Returns:
+        (시즌 ID, 시즌 이름) 튜플 또는 None
+    """
+    season_data = await fetch_season_data()
+    if not season_data or 'seasonID' not in season_data:
+        season_id = await get_current_season_id()
+        return (season_id, f"시즌 {season_id}") if season_id else None
+
+    season_id = season_data['seasonID']
+    season_name_raw = season_data.get('seasonName', '')
+
+    if season_name_raw.startswith('Pre-Season'):
+        for prev_id in range(season_id - 1, SEASON_ZERO_ID, -1):
+            prev = await fetch_season_data(prev_id)
+            if prev and not prev.get('seasonName', '').startswith('Pre-Season'):
+                season_id = prev['seasonID']
+                season_name_raw = prev.get('seasonName', '')
+                break
+
+    return season_id, get_season_name(season_id, season_name_raw)
+
 def _parse_season_date(date_str: str) -> Optional[datetime]:
     """시즌 날짜 문자열을 파싱합니다. 여러 형식을 지원합니다."""
     formats = [

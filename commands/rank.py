@@ -5,7 +5,7 @@ from discord import app_commands
 from typing import Dict, Any
 from client import ERClient
 
-from commands.season import get_current_season_id, get_season_info
+from commands.season import get_ranked_season
 from utils.layouts import create_loading_layout, footer_text
 from utils.errors import handle_errors, validate_nickname, NotFoundError, APIError
 from utils.logging_config import get_logger
@@ -132,13 +132,10 @@ class Rank(commands.Cog):
         await interaction.response.send_message(view=loading_view)
 
         # 시즌 정보 조회
-        season_id = await get_current_season_id()
-        if not season_id:
+        season = await get_ranked_season()
+        if not season:
             raise APIError("시즌 정보를 가져올 수 없습니다.", "현재 시즌 정보를 가져올 수 없어요.\n잠시 후 다시 시도해주세요.")
-
-        # 시즌 정보 가져오기
-        season_info = await get_season_info()
-        season_name = season_info.name if season_info else f"시즌 {season_id}"
+        season_id, season_name = season
 
         # 유저 UID 조회
         user_id = await self.client.get_user_nickname(validated_nickname)

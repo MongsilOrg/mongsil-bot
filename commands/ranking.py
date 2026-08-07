@@ -4,7 +4,7 @@ from discord.ext import commands
 from discord import app_commands, ui
 from typing import List, Dict, NamedTuple, Optional
 from client import ERClient
-from commands.season import get_current_season_id
+from commands.season import get_ranked_season
 import math
 
 from utils.config import config
@@ -204,15 +204,12 @@ class Ranking(commands.Cog):
         )
         await interaction.response.send_message(view=loading)
 
-        season_id = await get_current_season_id()
-        if not season_id:
+        season = await get_ranked_season()
+        if not season:
             error_layout = create_error_layout("시즌 정보 오류", "현재 시즌 정보를 가져올 수 없어요.\n잠시 후 다시 시도해주세요.", self.client)
             await interaction.edit_original_response(view=error_layout, embeds=[], attachments=[])
             return
-
-        from commands.season import get_season_info
-        season_info = await get_season_info()
-        season_name = season_info.name if season_info else "현재 시즌"
+        season_id, season_name = season
 
         ranking_data = await fetch_ranking_data(self.client, season_id, use_cache=True)
         if not ranking_data:
