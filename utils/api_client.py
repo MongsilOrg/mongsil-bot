@@ -140,11 +140,15 @@ class OptimizedAPIClient:
                 except aiohttp.ClientError as e:
                     logger.error(f"네트워크 오류: {redact_secrets(e)}")
                     raise APIError(f"네트워크 오류: {redact_secrets(e)}", "네트워크 오류가 발생했어요. 잠시 후 다시 시도해주세요.")
+                except asyncio.TimeoutError:
+                    # str()이 빈 문자열이라 일반 분기로 가면 "예상치 못한 오류: "만 남는다
+                    logger.warning(f"API 요청 시간 초과: {url}")
+                    raise APIError("요청 시간 초과", "응답이 늦어지고 있어요. 잠시 후 다시 시도해주세요.")
                 except (APIError, BotError):
                     raise
                 except Exception as e:
-                    logger.error(f"예상치 못한 오류: {redact_secrets(e)}")
-                    raise BotError(f"예상치 못한 오류: {redact_secrets(e)}", "서버 오류가 발생했어요. 잠시 후 다시 시도해주세요.")
+                    logger.error(f"예상치 못한 오류: {type(e).__name__}: {redact_secrets(e)}")
+                    raise BotError(f"예상치 못한 오류: {type(e).__name__}: {redact_secrets(e)}", "서버 오류가 발생했어요. 잠시 후 다시 시도해주세요.")
 
             await asyncio.sleep(retry_after)
     
