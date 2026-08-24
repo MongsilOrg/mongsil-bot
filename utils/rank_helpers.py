@@ -60,7 +60,16 @@ async def fetch_user_stats_solo(
                            "통계를 불러오지 못했어요. 잠시 후 다시 시도해주세요.")
         else:
             error_msg = data.get('message') if data else 'No response'
-            logger.error(f"유저 통계 API 오류: {error_msg}")
+            # 탈퇴한 계정은 닉네임 검색 인덱스에 남아 uid 조회는 되지만
+            # 통계 조회가 User Not Found로 떨어진다. 유저 조건이지 장애가 아니다.
+            # (무작위 uid나 숫자 userNum은 401이라 이 분기에 오지 않는다)
+            if error_msg == 'User Not Found':
+                logger.warning(f"유저 통계 User Not Found, uid={user_id}")
+                raise NotFoundError(
+                    f"유저 통계 없음(uid 무효): {user_id}",
+                    "유저 정보를 찾을 수 없어요. 탈퇴했거나 닉네임이 바뀐 계정일 수 있어요."
+                )
+            logger.error(f"유저 통계 API 오류: {error_msg} (uid={user_id})")
             raise APIError(f"API 오류: {error_msg}", "API 요청 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.")
     except (APIError, NotFoundError):
         raise
