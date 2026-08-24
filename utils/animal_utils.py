@@ -19,7 +19,9 @@ async def fetch_animal_image(api_url: str, source_name: str) -> Optional[Dict[st
             return data[0]
         return None
     except Exception as e:
-        logger.error(f"{source_name} 이미지 가져오기 실패: {e}")
+        # 원인은 api_client가 이미 남긴다. 외부 동물 API의 일시 실패까지
+        # ERROR로 올리면 Sentry 이슈만 쌓인다.
+        logger.warning(f"{source_name} 이미지 가져오기 실패: {e}")
         return None
 
 async def download_image(url: str) -> Optional[BytesIO]:
