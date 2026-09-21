@@ -26,6 +26,7 @@ SEASON_NAME_OFFSET = 9  # Season16은 시즌7이므로, 9를 빼면 됨
 # 시즌 코드명 (API 미제공 → seasonID 기준 수동 매핑, 새 시즌마다 한 줄 추가)
 SEASON_CODENAMES: Dict[int, str] = {
     39: "쁘띠 미뇽",  # 정규 시즌 11
+    41: "세일링",  # 정규 시즌 12
 }
 
 # 시즌 데이터 캐시 (API 호출 최소화)
