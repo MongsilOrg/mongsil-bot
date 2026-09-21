@@ -35,11 +35,11 @@ class RankUser(NamedTuple):
 def format_user_text(u: RankUser) -> str:
     """개별 유저 텍스트를 포맷합니다."""
     medal = RANK_MEDALS.get(u.rank, f'**#{u.rank}**')
-    win_rate = f'{u.wins / u.games * 100:.0f}%' if u.games > 0 else '-'
-    return (
-        f"{medal}  **{u.nickname}** | **{u.mmr:,}** RP\n"
-        f"-# {u.games}게임 | 승률 {win_rate} | 평균 {u.avg_rank:.1f}등 | 킬 {u.avg_kills:.1f}"
-    )
+    line = f"{medal}  **{u.nickname}** | **{u.mmr:,}** RP"
+    # games 0은 통계 조회 실패
+    if u.games > 0:
+        line += f"\n-# {u.games}게임 | 승률 {u.wins / u.games * 100:.0f}% | 평균 {u.avg_rank:.1f}등 | 킬 {u.avg_kills:.1f}"
+    return line
 
 
 class PaginationView(CooldownLayoutView):
