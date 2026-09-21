@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 import discord
 from discord import ui
 from discord.ext import commands
@@ -6,10 +8,10 @@ from typing import Optional, Dict, Tuple
 from client import ERClient
 from commands.season import get_ranked_season
 
-from utils.layouts import create_error_layout, footer_text
+from utils.layouts import create_error_layout
 from utils.errors import handle_errors
 from utils.logging_config import get_logger
-from utils.rank_helpers import fetch_ranking_data
+from utils.rank_helpers import RANKING_SERVER, SERVER_NAMES, fetch_ranking_data
 
 logger = get_logger('레이팅')
 
@@ -41,47 +43,27 @@ async def fetch_rating_info(client: ERClient, season_id: int) -> Tuple[Optional[
         logger.error(f"레이팅 정보 조회 중 오류 발생: {e}", exc_info=True)
         return None, None
 
-def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], client: ERClient, season_name: str) -> ui.LayoutView:
+def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], season_name: str) -> ui.LayoutView:
     """레이팅 정보 LayoutView를 생성합니다."""
-    view = ui.LayoutView()
-    children = []
+    def cut_text(tier: str, rank: int, user: Optional[Dict]) -> str:
+        value = f"**{user.get('mmr', 0):,}** RP" if user else "정보 없음"
+        return f"{tier} {value}\n-# {rank}등"
 
-    children.append(ui.TextDisplay(f"### {season_name} KR 레이팅 컷"))
-    children.append(ui.Separator())
-
-    # Eternity (300등)
-    if rank_300:
-        mmr_300 = rank_300.get('mmr', 0)
-        nick_300 = rank_300.get('nickname', '알 수 없음')
-        children.append(ui.TextDisplay(
-            f"이터니티 (300등)\n"
-            f"**{mmr_300:,}** RP | {nick_300}"
-        ))
-    else:
-        children.append(ui.TextDisplay("이터니티 (300등)\n-# 정보를 가져올 수 없습니다."))
-
-    children.append(ui.Separator())
-
-    # Demigod (1000등)
-    if rank_1000:
-        mmr_1000 = rank_1000.get('mmr', 0)
-        nick_1000 = rank_1000.get('nickname', '알 수 없음')
-        children.append(ui.TextDisplay(
-            f"데미갓 (1000등)\n"
-            f"**{mmr_1000:,}** RP | {nick_1000}"
-        ))
-    else:
-        children.append(ui.TextDisplay("데미갓 (1000등)\n-# 정보를 가져올 수 없습니다."))
-
-    # Show MMR gap if both available
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    children = [
+        ui.TextDisplay(f"### {season_name} {SERVER_NAMES[RANKING_SERVER]} 이터컷"),
+        ui.Separator(),
+        ui.TextDisplay(cut_text("이터니티", 300, rank_300)),
+        ui.Separator(),
+        ui.TextDisplay(cut_text("데미갓", 1000, rank_1000)),
+        ui.Separator(),
+    ]
+    footnote = f"<t:{now_ts}:t> 기준"
     if rank_300 and rank_1000:
-        gap = rank_300.get('mmr', 0) - rank_1000.get('mmr', 0)
-        children.append(ui.Separator())
-        children.append(ui.TextDisplay(f"-# 컷 차이 {gap:,} RP"))
+        footnote = f"컷 차이 {rank_300.get('mmr', 0) - rank_1000.get('mmr', 0):,} RP | " + footnote
+    children.append(ui.TextDisplay(f"-# {footnote}"))
 
-    children.append(ui.Separator(visible=False))
-    children.append(ui.TextDisplay(footer_text(client)))
-
+    view = ui.LayoutView()
     view.add_item(ui.Container(*children, accent_colour=discord.Colour.blurple()))
     return view
 
@@ -90,7 +72,7 @@ class Rating(commands.Cog):
     def __init__(self, client: ERClient):
         self.client = client
 
-    @app_commands.command(name="이터컷", description="이터니티/데미갓 컷 조회")
+    @app_commands.command(name="이터컷", description="이터니티와 데미갓 RP 컷 조회")
     @handle_errors(user_message="레이팅 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def rating_command(self, interaction: discord.Interaction):
         """현재 시즌의 이터니티/데미갓 컷을 확인합니다."""
@@ -98,11 +80,7 @@ class Rating(commands.Cog):
 
         season = await get_ranked_season()
         if not season:
-            error_view = create_error_layout(
-                "시즌 정보 오류",
-                "현재 시즌 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.",
-                self.client
-            )
+            error_view = create_error_layout("현재 시즌 정보를 가져올 수 없습니다. 잠시 후 다시 시도해주세요.")
             # 공개 defer 뒤 첫 followup이라 ephemeral은 적용되지 않는다
             await interaction.followup.send(view=error_view)
             return
@@ -112,15 +90,11 @@ class Rating(commands.Cog):
         rank_300, rank_1000 = await fetch_rating_info(self.client, season_id)
 
         if not rank_300 and not rank_1000:
-            error_view = create_error_layout(
-                "레이팅 정보 없음",
-                f"{season_name}의 레이팅 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.",
-                self.client
-            )
+            error_view = create_error_layout(f"{season_name} 이터컷을 가져올 수 없습니다. 잠시 후 다시 시도해주세요.")
             await interaction.followup.send(view=error_view)
             return
 
-        view = create_rating_layout(rank_300, rank_1000, self.client, season_name)
+        view = create_rating_layout(rank_300, rank_1000, season_name)
         await interaction.followup.send(view=view)
 
 async def setup(client: ERClient):

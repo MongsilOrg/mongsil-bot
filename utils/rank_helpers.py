@@ -9,6 +9,10 @@ from utils.logging_config import get_logger
 
 logger = get_logger('rank_helpers')
 
+# 랭킹 목록과 이터컷 기준 서버
+RANKING_SERVER = 10
+SERVER_NAMES = {10: "아시아1", 12: "북미", 13: "유럽", 14: "남미", 17: "아시아2", 18: "아시아3"}
+
 
 async def fetch_user_stats_solo(
     client: ERClient,
@@ -43,7 +47,7 @@ async def fetch_user_stats_solo(
             stats_list = data.get('userStats', [])
             if not stats_list:
                 # uid까지 찾힌 유저라 닉네임 문제는 아니다
-                raise NotFoundError("유저 통계 없음", "유저의 랭크 게임 기록이 없습니다.")
+                raise NotFoundError("유저 통계 없음", "이번 시즌 랭크 게임을 한 판 이상 한 유저만 조회할 수 있습니다.")
 
             # 랭크 솔로 모드 통계 찾기 (matchingMode=3, matchingTeamMode=3)
             for stats in stats_list:
@@ -67,7 +71,7 @@ async def fetch_user_stats_solo(
                 logger.warning(f"유저 통계 User Not Found, uid={user_id}")
                 raise NotFoundError(
                     f"유저 통계 없음(uid 무효): {user_id}",
-                    "유저 정보를 찾을 수 없습니다. 탈퇴했거나 닉네임이 바뀐 계정일 수 있습니다."
+                    "유저 정보를 찾을 수 없습니다. 닉네임을 바꿨다면 새 닉네임으로 조회해주세요."
                 )
             logger.error(f"유저 통계 API 오류: {error_msg} (uid={user_id})")
             raise APIError(f"API 오류: {error_msg}", "API 요청 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
@@ -91,7 +95,7 @@ async def fetch_ranking_data(client: ERClient, season_id: int, use_cache: bool =
         랭킹 데이터 리스트 또는 None
     """
     try:
-        url = f"{config.api_url}/rank/top/{season_id}/3/10"
+        url = f"{config.api_url}/rank/top/{season_id}/3/{RANKING_SERVER}"
 
         data = await client.api_client.get(url, use_cache=use_cache, ttl=300)
 

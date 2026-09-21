@@ -49,7 +49,7 @@ def _find_interaction(args) -> Optional[discord.Interaction]:
 
 async def _send_error(interaction: discord.Interaction, error_text: str):
     """에러 LayoutView를 전송합니다. 로딩 메시지가 있으면 교체합니다."""
-    layout = create_error_layout("오류", error_text)
+    layout = create_error_layout(error_text)
     try:
         if not interaction.response.is_done():
             await interaction.response.send_message(view=layout, ephemeral=True)

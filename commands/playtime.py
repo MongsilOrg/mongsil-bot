@@ -1,3 +1,5 @@
+from urllib.parse import quote
+
 import discord
 import pytz
 from datetime import datetime, timedelta
@@ -6,7 +8,7 @@ from client import ERClient
 from discord import app_commands, ui
 from discord.ext import commands
 from utils.config import config
-from utils.layouts import create_loading_layout, footer_text
+from utils.layouts import create_loading_layout
 from utils.errors import handle_errors, validate_nickname, NotFoundError
 from utils.logging_config import get_logger
 from utils.emojis import EMOJIS
@@ -19,12 +21,16 @@ class GameStats(NamedTuple):
     """게임 통계 정보를 저장하는 네임드 튜플"""
     date: datetime.date
     play_time: int
+    mode: int
+    nickname: str
 
 class PlayTimeStats(NamedTuple):
     """플레이 타임 통계 정보를 저장하는 네임드 튜플"""
     total_seconds: int
     daily_stats: Dict[datetime.date, int]
     games_played: int
+    mode_counts: Dict[str, int]
+    nickname: str
 
 # 요일 상수
 WEEKDAYS = {
@@ -36,6 +42,8 @@ WEEKDAYS = {
     5: '토',
     6: '일'
 }
+
+MODE_NAMES = {3: '랭크', 2: '일반', 6: '코발트', 9: '론울프'}
 
 async def get_user_games(client, user_id: str, start_date: datetime.date) -> List[GameStats]:
     """유저의 게임 기록을 가져옵니다."""
@@ -68,6 +76,8 @@ async def get_user_games(client, user_id: str, start_date: datetime.date) -> Lis
                         games.append(GameStats(
                             date=game_date,
                             play_time=game.get('playTime', 0),
+                            mode=game.get('matchingMode', 0),
+                            nickname=game.get('nickname', ''),
                         ))
                     except (ValueError, KeyError):
                         continue
@@ -85,19 +95,23 @@ async def get_user_games(client, user_id: str, start_date: datetime.date) -> Lis
         logger.error(f"게임 기록 조회 중 오류: {e}", exc_info=True)
         raise
 
-def calculate_play_time_stats(games: List[GameStats], dates: List[datetime.date]) -> PlayTimeStats:
+def calculate_play_time_stats(games: List[GameStats], dates: List[datetime.date], nickname: str) -> PlayTimeStats:
     """플레이 타임 통계를 계산합니다."""
     daily_stats = {date: 0 for date in dates}
+    mode_counts = {name: 0 for name in MODE_NAMES.values()}
+    mode_counts['기타'] = 0
 
-    # 게임별 플레이 시간 집계
     for game in games:
         if game.date in daily_stats:
             daily_stats[game.date] += game.play_time
+        mode_counts[MODE_NAMES.get(game.mode, '기타')] += 1
 
     return PlayTimeStats(
         total_seconds=sum(daily_stats.values()),
         daily_stats=daily_stats,
         games_played=len(games),
+        mode_counts={name: count for name, count in mode_counts.items() if count},
+        nickname=games[0].nickname or nickname,
     )
 
 def format_duration(seconds: int) -> str:
@@ -115,7 +129,7 @@ def format_duration(seconds: int) -> str:
         else:
             return f"{hours}시간"
 
-def create_playtime_layout(client, nickname: str, stats: PlayTimeStats) -> ui.LayoutView:
+def create_playtime_layout(stats: PlayTimeStats) -> ui.LayoutView:
     """플레이 타임 LayoutView를 생성합니다."""
     daily_avg = stats.total_seconds // 7
     daily_chart = create_daily_chart(stats.daily_stats)
@@ -124,7 +138,7 @@ def create_playtime_layout(client, nickname: str, stats: PlayTimeStats) -> ui.La
     children = []
 
     # Header
-    children.append(ui.TextDisplay(f"### {nickname}님의 플레이 타임\n-# 최근 7일"))
+    children.append(ui.TextDisplay(f"### {stats.nickname}\n-# 최근 7일 플레이 타임"))
     children.append(ui.Separator())
 
     # Summary stats - two clean lines
@@ -133,24 +147,24 @@ def create_playtime_layout(client, nickname: str, stats: PlayTimeStats) -> ui.La
     if stats.games_played > 0:
         avg_game = stats.total_seconds // stats.games_played
         summary += f" | 게임당 평균 **{format_duration(avg_game)}**"
+    summary += "\n-# " + " | ".join(f"{name} {count}" for name, count in stats.mode_counts.items())
     children.append(ui.TextDisplay(summary))
     children.append(ui.Separator())
 
     # Daily chart
     children.append(ui.TextDisplay(daily_chart))
 
-    children.append(ui.Separator(visible=False))
-    children.append(ui.TextDisplay(footer_text(client)))
-
     view.add_item(ui.Container(*children, accent_colour=discord.Colour.blurple()))
 
-    # DAK.GG 링크 버튼
-    view.add_item(ui.ActionRow(
-        ui.Button(style=discord.ButtonStyle.link, label="DAK.GG", emoji=EMOJIS['chart'],
-                  url=f"https://dak.gg/er/players/{nickname}")
-    ))
-
+    view.add_item(dakgg_row(stats.nickname))
     return view
+
+
+def dakgg_row(nickname: str) -> ui.ActionRow:
+    return ui.ActionRow(
+        ui.Button(style=discord.ButtonStyle.link, label="DAK.GG", emoji=EMOJIS['chart'],
+                  url=f"https://dak.gg/er/players/{quote(nickname)}")
+    )
 
 def create_daily_chart(daily_stats: Dict[datetime.date, int]) -> str:
     """일일 플레이 타임을 시각적 차트로 표현합니다."""
@@ -197,8 +211,7 @@ async def get_playtime_info(client: ERClient, nickname: str) -> Optional[PlayTim
     if not games:
         return None
 
-    # 통계 계산
-    return calculate_play_time_stats(games, dates)
+    return calculate_play_time_stats(games, dates, nickname)
 
 class Playtime(commands.Cog):
     def __init__(self, client: ERClient):
@@ -216,41 +229,21 @@ class Playtime(commands.Cog):
         # 닉네임 검증
         validated_nickname = validate_nickname(닉네임)
 
-        # 로딩 메시지 표시
-        loading_view = create_loading_layout(
-            "플레이 타임 조회 중...",
-            f"`{validated_nickname}`님의 게임 기록을 불러오고 있어요.",
-            self.client
-        )
-        await interaction.response.send_message(view=loading_view)
+        await interaction.response.send_message(view=create_loading_layout("플레이 타임 조회 중"))
 
         # 플레이 타임 정보 조회
         stats = await get_playtime_info(self.client, validated_nickname)
         if not stats:
-            # 데이터 없음 LayoutView
             no_data_view = ui.LayoutView()
-            container = ui.Container(accent_colour=discord.Colour.blurple())
-            container.add_item(ui.TextDisplay(
-                f"### {validated_nickname}님의 플레이 기록\n"
-                "최근 7일간 플레이 기록이 없습니다."
+            no_data_view.add_item(ui.Container(
+                ui.TextDisplay(f"### {validated_nickname}\n최근 7일 플레이 기록이 없습니다."),
+                accent_colour=discord.Colour.blurple(),
             ))
-            container.add_item(ui.Separator(visible=False))
-            container.add_item(ui.TextDisplay(footer_text(self.client)))
-            no_data_view.add_item(container)
-
-            dakgg_button = ui.Button(
-                style=discord.ButtonStyle.link,
-                label="DAK.GG",
-                emoji=EMOJIS['chart'],
-                url=f"https://dak.gg/er/players/{validated_nickname}"
-            )
-            no_data_view.add_item(ui.ActionRow(dakgg_button))
-
+            no_data_view.add_item(dakgg_row(validated_nickname))
             await interaction.edit_original_response(view=no_data_view)
             return
 
-        # 성공적인 결과 표시
-        view = create_playtime_layout(self.client, validated_nickname, stats)
+        view = create_playtime_layout(stats)
         await interaction.edit_original_response(view=view)
 
 async def setup(client: ERClient):

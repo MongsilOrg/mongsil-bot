@@ -1,4 +1,3 @@
-import os
 import discord
 from discord import ui
 from discord.ext import commands
@@ -9,7 +8,7 @@ import pytz
 from client import ERClient
 
 from utils.config import config
-from utils.layouts import create_error_layout, footer_text
+from utils.layouts import create_error_layout
 from utils.errors import handle_errors
 from utils.logging_config import get_logger
 from utils.emojis import EMOJIS
@@ -144,33 +143,6 @@ async def fetch_season_data(season_id: Optional[int] = None) -> Optional[Dict[st
         logger.error(f"시즌 API 호출 중 오류: {e}", exc_info=True)
         return None
 
-async def get_current_season_id() -> Optional[int]:
-    """
-    현재 시즌 ID를 가져옵니다.
-    API에서 우선 조회하고, 실패 시 환경변수를 fallback으로 사용합니다.
-
-    Returns:
-        현재 시즌 ID 또는 None
-    """
-    try:
-        # 1. API에서 현재 시즌 조회
-        season_data = await fetch_season_data()
-        if season_data and 'seasonID' in season_data:
-            return season_data['seasonID']
-
-        # 2. 환경변수 fallback
-        env_season_id = os.getenv('SEASON_ID')
-        if env_season_id is not None:
-            logger.warning(f"API에서 시즌 정보를 가져올 수 없어 환경변수 사용: SEASON_ID={env_season_id}")
-            return int(env_season_id)
-
-        return None
-    except Exception as e:
-        logger.error(f"현재 시즌 ID 조회 중 오류: {e}", exc_info=True)
-        # 환경변수 fallback
-        env_val = os.getenv('SEASON_ID')
-        return int(env_val) if env_val else None
-
 async def get_ranked_season() -> Optional[Tuple[int, str]]:
     """
     랭크 조회에 쓸 시즌 ID와 한국어 시즌 이름을 가져옵니다.
@@ -182,8 +154,7 @@ async def get_ranked_season() -> Optional[Tuple[int, str]]:
     """
     season_data = await fetch_season_data()
     if not season_data or 'seasonID' not in season_data:
-        season_id = await get_current_season_id()
-        return (season_id, f"시즌 {season_id}") if season_id else None
+        return None
 
     season_id = season_data['seasonID']
     season_name_raw = season_data.get('seasonName', '')
@@ -218,195 +189,58 @@ def _parse_season_date(date_str: str) -> Optional[datetime]:
     return None
 
 async def get_season_info() -> Optional[SeasonInfo]:
-    """
-    시즌 정보를 가져옵니다.
-    API에서 우선 조회하고, 실패 시 환경변수를 fallback으로 사용합니다.
-
-    Returns:
-        SeasonInfo 객체 또는 None
-    """
-    try:
-        # 1. API에서 현재 시즌 조회
-        season_data = await fetch_season_data()
-        if season_data:
-            season_id = season_data.get('seasonID')
-            season_name_raw = season_data.get('seasonName', '')
-            season_start_str = season_data.get('seasonStart', '')
-            season_end_str = season_data.get('seasonEnd', '')
-
-            if season_id and season_start_str and season_end_str:
-                start_date = _parse_season_date(season_start_str)
-                end_date = _parse_season_date(season_end_str)
-
-                if start_date and end_date:
-                    # 시즌 이름 변환
-                    season_name = get_season_name(season_id, season_name_raw)
-                    return SeasonInfo(
-                        number=season_id,
-                        start_date=start_date,
-                        end_date=end_date,
-                        name=season_name
-                    )
-
-        # 2. 환경변수 fallback
-        env_season_id_str = os.getenv('SEASON_ID')
-        if not env_season_id_str:
-            logger.warning("시즌 정보를 API와 환경변수 모두에서 가져올 수 없습니다")
-            return None
-        env_season_id = int(env_season_id_str)
-
-        env_start_str = os.getenv('SEASON_START')
-        env_end_str = os.getenv('SEASON_END')
-        if not (env_start_str and env_end_str):
-            logger.warning("환경변수 SEASON_START 또는 SEASON_END가 설정되지 않았습니다")
-            return None
-
-        start_date = _parse_season_date(env_start_str)
-        end_date = _parse_season_date(env_end_str)
-        if not (start_date and end_date):
-            logger.error("환경변수 시즌 날짜 파싱 실패")
-            return None
-
-        season_name = os.getenv('SEASON_NAME') or f"시즌 {env_season_id}"
-        logger.warning(f"API에서 시즌 정보를 가져올 수 없어 환경변수 사용: {season_name}")
-
-        return SeasonInfo(
-            number=env_season_id,
-            start_date=start_date,
-            end_date=end_date,
-            name=season_name
-        )
-
-    except Exception as e:
-        logger.error(f"시즌 정보 계산 중 오류: {e}", exc_info=True)
+    """현재 시즌 정보를 가져옵니다. 실패하면 None."""
+    season_data = await fetch_season_data()
+    if not season_data:
         return None
 
-def _calculate_season_progress(season_info: SeasonInfo) -> Tuple[float, str]:
-    """
-    시즌 진행도를 계산합니다.
+    season_id = season_data.get('seasonID')
+    start_date = _parse_season_date(season_data.get('seasonStart', ''))
+    end_date = _parse_season_date(season_data.get('seasonEnd', ''))
+    if not (season_id and start_date and end_date):
+        logger.error(f"시즌 데이터 형식 이상: {season_data}")
+        return None
 
-    Args:
-        season_info: 시즌 정보
-
-    Returns:
-        (진행도 퍼센트, 상태 텍스트) 튜플
-    """
-    now = datetime.now(KST)
-
-    if now < season_info.start_date:
-        return 0.0, "시즌 시작 전"
-
-    if now > season_info.end_date:
-        return 100.0, "시즌 종료됨"
-
-    total_duration = season_info.end_date - season_info.start_date
-    elapsed_duration = now - season_info.start_date
-    progress = min(max(elapsed_duration.total_seconds() / total_duration.total_seconds() * 100, 0), 100)
-
-    if progress < 25:
-        status_text = "시즌 초반"
-    elif progress < 50:
-        status_text = "시즌 전반"
-    elif progress < 75:
-        status_text = "시즌 후반"
-    else:
-        status_text = "시즌 마무리"
-
-    return progress, status_text
-
-def _create_progress_bar(progress: float, length: int = 20) -> str:
-    """
-    진행도 바를 생성합니다.
-
-    Args:
-        progress: 진행도 (0-100)
-        length: 바의 길이
-
-    Returns:
-        진행도 바 문자열
-    """
-    # 칠해진 칸과 빈 칸 모두 같은 폭의 블록 문자(█/░)를 사용해
-    # 진행도와 실제 막대 길이가 어긋나지 않도록 한다.
-    filled_length = max(0, min(length, round(length * progress / 100)))
-    return '█' * filled_length + '░' * (length - filled_length)
-
-
-def create_season_layout(season_info: Optional[SeasonInfo], client: ERClient) -> ui.LayoutView:
-    """
-    시즌 정보 LayoutView를 생성합니다.
-
-    Args:
-        season_info: 시즌 정보
-        client: Discord 클라이언트
-
-    Returns:
-        LayoutView 객체
-    """
-    if not season_info:
-        return create_error_layout(
-            "시즌 정보 오류",
-            "현재 시즌 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.",
-            client
-        )
-
-    # 시즌 진행도 계산
-    progress, status_text = _calculate_season_progress(season_info)
-    progress_bar = _create_progress_bar(progress)
-
-    # 시즌 코드명이 있으면 이름과 함께 표시 (예: 정규 시즌 11 (쁘띠 미뇽))
-    codename = SEASON_CODENAMES.get(season_info.number)
-    name_display = f"{season_info.name} ({codename})" if codename else season_info.name
-
-    # 시즌 시작 전이면 시작 시점까지, 아니면 종료 시점까지 상대 시간 표시
-    # Discord 타임스탬프라 자동 갱신되고 시간대 문제도 없다
-    if status_text == "시즌 시작 전":
-        time_label, target_ts = "시작까지", int(season_info.start_date.timestamp())
-    elif status_text == "시즌 종료됨":
-        # 과거 시각은 'N일 전'으로 렌더링되므로 '남은 시간' 라벨과 모순되지 않게
-        time_label, target_ts = "종료", int(season_info.end_date.timestamp())
-    else:
-        time_label, target_ts = "남은 시간", int(season_info.end_date.timestamp())
-
-    # 시즌 기간 정보 (간결한 형식)
-    start_date_str = season_info.start_date.strftime("%m/%d %H시")
-    end_date_str = season_info.end_date.strftime("%m/%d %H시")
-
-    # 시즌 기간과 총 기간
-    total_duration = season_info.end_date - season_info.start_date
-    total_days = total_duration.days
-
-    # 현재 진행 일수 계산
-    now = datetime.now(KST)
-    if now < season_info.start_date:
-        elapsed_days = 0
-    elif now > season_info.end_date:
-        elapsed_days = total_days
-    else:
-        elapsed_days = (now - season_info.start_date).days
-
-    # LayoutView 구성
-    view = ui.LayoutView(timeout=None)
-
-    container = ui.Container(
-        ui.TextDisplay(
-            f"### {name_display}\n"
-            f"{status_text}"
-        ),
-        ui.Separator(),
-        ui.TextDisplay(
-            f"**{start_date_str}** ~ **{end_date_str}**\n"
-            f"-# {elapsed_days}일째 / 총 {total_days}일"
-        ),
-        ui.TextDisplay(f"{time_label} <t:{target_ts}:R>"),
-        ui.Separator(),
-        ui.TextDisplay(f"{progress_bar}  **{progress:.1f}%**"),
-        ui.Separator(visible=False),
-        ui.TextDisplay(footer_text(client)),
-        accent_colour=discord.Colour.blurple(),
+    return SeasonInfo(
+        number=season_id,
+        start_date=start_date,
+        end_date=end_date,
+        name=get_season_name(season_id, season_data.get('seasonName', '')),
     )
-    view.add_item(container)
 
-    # 링크 버튼 ActionRow
+def create_season_layout(season_info: Optional[SeasonInfo]) -> ui.LayoutView:
+    """시즌 정보 LayoutView를 생성합니다."""
+    if not season_info:
+        return create_error_layout("현재 시즌 정보를 가져올 수 없습니다. 잠시 후 다시 시도해주세요.")
+
+    now = datetime.now(KST)
+    total = (season_info.end_date - season_info.start_date).total_seconds()
+    elapsed = (now - season_info.start_date).total_seconds()
+    progress = min(max(elapsed / total * 100, 0), 100) if total > 0 else 0
+
+    # Discord 상대 시각은 클라이언트 언어로 'N일 후', 'N일 전'으로 렌더링됨
+    if now < season_info.start_date:
+        remaining = f"<t:{int(season_info.start_date.timestamp())}:R> 시작"
+    else:
+        remaining = f"<t:{int(season_info.end_date.timestamp())}:R> 종료"
+
+    filled = round(progress / 10)
+    progress_bar = "▰" * filled + "▱" * (10 - filled)
+
+    codename = SEASON_CODENAMES.get(season_info.number)
+    title = f"{season_info.name} | {codename}" if codename else season_info.name
+
+    view = ui.LayoutView(timeout=None)
+    view.add_item(ui.Container(
+        ui.TextDisplay(f"### {title}"),
+        ui.Separator(),
+        ui.TextDisplay(
+            f"**{season_info.start_date:%m/%d %H시}** ~ **{season_info.end_date:%m/%d %H시}**\n"
+            f"{remaining}"
+        ),
+        ui.TextDisplay(f"{progress_bar}  **{progress:.1f}%**"),
+        accent_colour=discord.Colour.blurple(),
+    ))
     view.add_item(ui.ActionRow(
         ui.Button(
             style=discord.ButtonStyle.link,
@@ -417,11 +251,10 @@ def create_season_layout(season_info: Optional[SeasonInfo], client: ERClient) ->
         ui.Button(
             style=discord.ButtonStyle.link,
             label="패치 노트",
-            url="https://game.naver.com/lounge/Black_Survival_Eternal_Return/board/17",
+            url="https://playeternalreturn.com/posts/news?categoryPath=patchnote&hl=ko-KR",
             emoji=EMOJIS['patch_note'],
         ),
     ))
-
     return view
 
 class Season(commands.Cog):
@@ -442,7 +275,7 @@ class Season(commands.Cog):
         await interaction.response.defer()
 
         season_info = await get_season_info()
-        layout = create_season_layout(season_info, self.client)
+        layout = create_season_layout(season_info)
 
         await interaction.followup.send(view=layout)
 

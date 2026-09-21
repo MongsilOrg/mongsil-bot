@@ -12,7 +12,7 @@ from discord.ext import commands, tasks
 from client import ERClient
 from utils.api_client import api_client
 from utils.config import config
-from utils.layouts import create_error_layout, footer_text
+from utils.layouts import create_error_layout
 from utils.errors import handle_errors
 from utils.logging_config import get_logger
 from utils.emojis import EMOJIS
@@ -160,7 +160,7 @@ async def get_current_player_count() -> Optional[int]:
         logger.error(f"플레이어 수 조회 중 오류 발생: {e}", exc_info=True)
         return None
 
-def create_concurrent_layout(current_count: int, client: ERClient) -> ui.LayoutView:
+def create_concurrent_layout(current_count: int) -> ui.LayoutView:
     """동시 접속자 수 LayoutView를 생성합니다."""
     now_ts = int(datetime.now(timezone.utc).timestamp())
     stats = concurrent_data.get_statistics()
@@ -177,9 +177,6 @@ def create_concurrent_layout(current_count: int, client: ERClient) -> ui.LayoutV
         children.append(ui.TextDisplay(
             f"24시간 최고 **{stats['max_count']:,}**명, <t:{max_ts}:t>"
         ))
-
-    children.append(ui.Separator(visible=False))
-    children.append(ui.TextDisplay(footer_text(client)))
 
     view = ui.LayoutView(timeout=None)
     view.add_item(ui.Container(*children, accent_colour=discord.Colour.blurple()))
@@ -210,11 +207,10 @@ class Concurrent(commands.Cog):
 
         # Steam API 키 확인
         if not config.steam_api_key:
-            layout = create_error_layout(
-                "Steam API 키 없음",
-                "Steam API 키가 설정되지 않아 동시 접속자 수를 조회할 수 없습니다.\n관리자에게 문의해주세요.",
-                self.client
-            )
+            layout = create_error_layout("지금은 동시 접속자 수를 조회할 수 없습니다. 지원 서버에 알려주세요.")
+            layout.add_item(ui.ActionRow(ui.Button(
+                style=discord.ButtonStyle.link, label="지원 서버", url=config.support_server, emoji=EMOJIS['support'],
+            )))
             # 공개 defer 뒤 첫 followup이라 ephemeral은 적용되지 않는다
             await interaction.followup.send(view=layout)
             return
@@ -222,15 +218,11 @@ class Concurrent(commands.Cog):
         current_count = await get_current_player_count()
 
         if current_count is None:
-            layout = create_error_layout(
-                "데이터 조회 실패",
-                "현재 동시 접속자 수를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.",
-                self.client
-            )
+            layout = create_error_layout("동시 접속자 수를 가져오지 못했습니다. 잠시 후 다시 시도해주세요.")
             await interaction.followup.send(view=layout)
             return
 
-        layout = create_concurrent_layout(current_count, self.client)
+        layout = create_concurrent_layout(current_count)
 
         await interaction.followup.send(view=layout)
 

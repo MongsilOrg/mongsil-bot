@@ -5,7 +5,7 @@ from discord import app_commands, ui
 from client import ERClient
 
 from utils.config import config
-from utils.layouts import create_error_layout, footer_text, CooldownLayoutView
+from utils.layouts import create_error_layout, CooldownLayoutView
 from utils.errors import handle_errors
 from utils.logging_config import get_logger
 from utils.emoji_zoom import load_disabled_servers, save_disabled_servers
@@ -14,10 +14,9 @@ from utils.emojis import EMOJIS
 logger = get_logger('설정')
 
 class SettingsView(CooldownLayoutView):
-    def __init__(self, guild_id: int, client: ERClient):
+    def __init__(self, guild_id: int):
         super().__init__(timeout=config.view_timeout_interactive)
         self.guild_id = guild_id
-        self.client = client
         self.build_layout()
 
     def build_layout(self):
@@ -32,8 +31,6 @@ class SettingsView(CooldownLayoutView):
         container.add_item(ui.TextDisplay("### 서버 설정"))
         container.add_item(ui.Separator())
         container.add_item(ui.TextDisplay(f"이모지 확대\n{status_emoji} **{status}**"))
-        container.add_item(ui.Separator(visible=False))
-        container.add_item(ui.TextDisplay(footer_text(self.client)))
         self.add_item(container)
 
         # 토글 버튼
@@ -52,8 +49,8 @@ class SettingsView(CooldownLayoutView):
             await interaction.response.defer()
             return False
 
-        if not interaction.user.guild_permissions.administrator:
-            error_layout = create_error_layout("권한 없음", "관리자만 설정을 변경할 수 있습니다.", self.client)
+        if not interaction.user.guild_permissions.manage_guild:
+            error_layout = create_error_layout("서버 관리 권한이 있는 유저만 설정을 바꿀 수 있습니다.")
             await interaction.response.send_message(view=error_layout, ephemeral=True)
             return False
 
@@ -66,9 +63,7 @@ class SettingsView(CooldownLayoutView):
         else:
             if not interaction.guild.me.guild_permissions.manage_webhooks:
                 error_layout = create_error_layout(
-                    "권한 부족",
-                    "봇에 웹후크 관리 권한이 없어 이모지 확대를 켤 수 없습니다.\n몽실봇 역할에 웹후크 관리 권한을 준 뒤 다시 시도해주세요.",
-                    self.client
+                    "봇에 웹후크 관리 권한이 없어 이모지 확대를 켤 수 없습니다.\n몽실봇 역할에 웹후크 관리 권한을 준 뒤 다시 시도해주세요."
                 )
                 await interaction.response.send_message(view=error_layout, ephemeral=True)
                 return False
@@ -79,7 +74,7 @@ class SettingsView(CooldownLayoutView):
             self.build_layout()
             await interaction.response.edit_message(view=self)
         else:
-            error_layout = create_error_layout("저장 실패", "설정 저장 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.", self.client)
+            error_layout = create_error_layout("설정을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.")
             await interaction.response.send_message(view=error_layout, ephemeral=True)
 
         return False
@@ -90,10 +85,11 @@ class Settings(commands.Cog):
 
     @app_commands.command(name="설정", description="서버 봇 설정 관리")
     @app_commands.guild_only()
+    @app_commands.default_permissions(manage_guild=True)
     @handle_errors(user_message="설정을 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def settings_command(self, interaction: discord.Interaction):
         """서버의 봇 설정을 관리합니다."""
-        view = SettingsView(interaction.guild_id, self.client)
+        view = SettingsView(interaction.guild_id)
         await interaction.response.send_message(view=view)
         view.message = await interaction.original_response()
 

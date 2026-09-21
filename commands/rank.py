@@ -6,7 +6,7 @@ from typing import Dict, Any
 from client import ERClient
 
 from commands.season import get_ranked_season
-from utils.layouts import create_loading_layout, footer_text
+from utils.layouts import create_loading_layout
 from utils.errors import handle_errors, validate_nickname, NotFoundError, APIError
 from utils.logging_config import get_logger
 from utils.character_names import get_character_name
@@ -90,10 +90,6 @@ def create_rank_layout(nickname: str, stats: Dict[str, Any], client: ERClient) -
                 char_lines.append(f"**{char_name}** {char_games}게임, 승률 {char_win_rate:.0f}%")
             container_items.append(ui.TextDisplay("### 모스트 캐릭터\n" + "\n".join(char_lines)))
 
-    # 푸터
-    container_items.append(ui.Separator(visible=False))
-    container_items.append(ui.TextDisplay(footer_text(client)))
-
     view.add_item(ui.Container(*container_items, accent_colour=discord.Colour.blurple()))
 
     # DAK.GG 링크 버튼
@@ -123,13 +119,7 @@ class Rank(commands.Cog):
         # 입력 검증 (실패 시 handle_errors가 user_message를 ephemeral로 전송)
         validated_nickname = validate_nickname(닉네임)
 
-        # 로딩 메시지 표시
-        loading_view = create_loading_layout(
-            "랭크 조회 중...",
-            f"`{validated_nickname}`님의 랭크 정보를 불러오고 있어요.",
-            self.client
-        )
-        await interaction.response.send_message(view=loading_view)
+        await interaction.response.send_message(view=create_loading_layout("랭크 조회 중"))
 
         # 시즌 정보 조회
         season = await get_ranked_season()

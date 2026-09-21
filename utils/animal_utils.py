@@ -4,7 +4,6 @@
 from typing import Optional, Dict, Any
 from io import BytesIO
 import discord
-from discord import ui
 from .api_client import api_client
 from .layouts import create_error_layout
 from .logging_config import get_logger
@@ -41,7 +40,6 @@ async def download_image(url: str) -> Optional[BytesIO]:
 
 async def send_animal_photo(
     interaction: discord.Interaction,
-    client,
     api_url: str,
     animal_name: str,
     filename_prefix: str,
@@ -50,40 +48,12 @@ async def send_animal_photo(
     await interaction.response.defer()
 
     image_data = await fetch_animal_image(api_url, animal_name)
-    if not image_data:
-        layout = create_animal_error_layout("not_found", animal_name, client)
-        await interaction.followup.send(view=layout)
-        return
-
-    file_bytes = await download_image(image_data['url'])
+    file_bytes = await download_image(image_data['url']) if image_data else None
     if not file_bytes:
-        layout = create_animal_error_layout("download_failed", animal_name, client)
-        await interaction.followup.send(view=layout)
+        await interaction.followup.send(view=create_error_layout(f"{animal_name} 사진을 가져오지 못했습니다. 잠시 후 다시 시도해주세요."))
         return
 
     breeds = [b['name'] for b in image_data.get('breeds') or [] if 'name' in b]
     filename = f"{filename_prefix}_{'_'.join(breeds)}.jpg" if breeds else f"{filename_prefix}.jpg"
 
     await interaction.followup.send(file=discord.File(file_bytes, filename=filename))
-
-
-def create_animal_error_layout(error_type: str, animal_name: str, client=None) -> ui.LayoutView:
-    """동물 관련 에러 LayoutView를 생성합니다."""
-    if error_type == "not_found":
-        return create_error_layout(
-            f"{animal_name} 사진 조회 실패",
-            f"{animal_name} 사진을 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.",
-            client
-        )
-    elif error_type == "download_failed":
-        return create_error_layout(
-            "이미지 다운로드 실패",
-            f"{animal_name} 사진을 다운로드할 수 없습니다.\n잠시 후 다시 시도해주세요.",
-            client
-        )
-    else:
-        return create_error_layout(
-            "오류 발생",
-            f"{animal_name} 사진을 가져오는 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.",
-            client
-        )

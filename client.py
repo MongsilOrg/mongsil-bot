@@ -129,7 +129,7 @@ class ERClient(commands.Bot):
             logger.error(f"명령어 실행 오류: {error}", exc_info=True)
 
         try:
-            layout = create_error_layout("오류", error_message)
+            layout = create_error_layout(error_message)
             if not interaction.response.is_done():
                 await interaction.response.send_message(view=layout, ephemeral=True)
             else:

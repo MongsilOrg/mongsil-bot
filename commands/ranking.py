@@ -8,10 +8,10 @@ from commands.season import get_ranked_season
 import math
 
 from utils.config import config
-from utils.layouts import create_error_layout, create_loading_layout, footer_text, CooldownLayoutView
+from utils.layouts import create_error_layout, create_loading_layout, CooldownLayoutView
 from utils.errors import handle_errors
 from utils.logging_config import get_logger
-from utils.rank_helpers import fetch_user_stats_solo, fetch_ranking_data
+from utils.rank_helpers import RANKING_SERVER, SERVER_NAMES, fetch_user_stats_solo, fetch_ranking_data
 
 logger = get_logger('랭킹')
 
@@ -50,9 +50,16 @@ class PaginationView(CooldownLayoutView):
         self.current_page = 1
         self.total_pages = total_pages
         self.page_cache: Dict[int, List[RankUser]] = {1: first_page_users}
+        self._prefetching: Dict[int, asyncio.Task] = {}
         self.season_name = season_name
 
         self.build_layout()
+        self._prefetch(2)
+
+    def _prefetch(self, page: int):
+        """페이지당 API 20회라 다음 페이지 선조회"""
+        if 1 <= page <= self.total_pages and page not in self.page_cache and page not in self._prefetching:
+            self._prefetching[page] = asyncio.create_task(get_ranking_info(self.client, self.season_id, page))
 
     def build_layout(self):
         """현재 페이지 기준으로 레이아웃을 빌드합니다."""
@@ -60,16 +67,13 @@ class PaginationView(CooldownLayoutView):
 
         users = self.page_cache.get(self.current_page, [])
 
-        children = [ui.TextDisplay(f"### {self.season_name} KR 랭킹")]
+        children = [ui.TextDisplay(f"### {self.season_name} {SERVER_NAMES[RANKING_SERVER]} 랭킹")]
         children.append(ui.Separator())
 
         for i, u in enumerate(users):
             children.append(ui.TextDisplay(format_user_text(u)))
             if i < len(users) - 1:
                 children.append(ui.Separator())
-
-        children.append(ui.Separator(visible=False))
-        children.append(ui.TextDisplay(footer_text(self.client)))
 
         self.add_item(ui.Container(*children, accent_colour=discord.Colour.blurple()))
 
@@ -107,7 +111,8 @@ class PaginationView(CooldownLayoutView):
         try:
             users = self.page_cache.get(target_page)
             if users is None:
-                users = await get_ranking_info(self.client, self.season_id, target_page)
+                task = self._prefetching.pop(target_page, None)
+                users = await task if task else await get_ranking_info(self.client, self.season_id, target_page)
                 if users:
                     self.page_cache[target_page] = users
 
@@ -118,13 +123,14 @@ class PaginationView(CooldownLayoutView):
             self.current_page = target_page
             self.build_layout()
             await interaction.edit_original_response(view=self, attachments=[])
+            self._prefetch(target_page + 1)
         except Exception as e:
             logger.error(f"페이지 업데이트 중 오류 발생: {e}", exc_info=True)
             await self._send_page_error(interaction)
 
     async def _send_page_error(self, interaction: discord.Interaction):
         try:
-            layout = create_error_layout("페이지 로드 실패", "랭킹 페이지를 불러오지 못했습니다.\n잠시 후 다시 시도해주세요.", self.client)
+            layout = create_error_layout("랭킹 페이지를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.")
             await interaction.followup.send(view=layout, ephemeral=True)
         except Exception:
             pass
@@ -193,27 +199,22 @@ class Ranking(commands.Cog):
     def __init__(self, client: ERClient):
         self.client = client
 
-    @app_commands.command(name="랭킹", description="KR 상위 100명 랭킹 조회")
+    @app_commands.command(name="랭킹", description="아시아1 서버 상위 100명 랭킹 조회")
     @handle_errors(user_message="랭킹 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def ranking_command(self, interaction: discord.Interaction):
         """랭킹을 보여줍니다."""
-        loading = create_loading_layout(
-            "랭킹 조회 중...",
-            "상위 100명의 랭킹 데이터를 불러오고 있어요.",
-            self.client
-        )
-        await interaction.response.send_message(view=loading)
+        await interaction.response.send_message(view=create_loading_layout("랭킹 조회 중"))
 
         season = await get_ranked_season()
         if not season:
-            error_layout = create_error_layout("시즌 정보 오류", "현재 시즌 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.", self.client)
+            error_layout = create_error_layout("현재 시즌 정보를 가져올 수 없습니다. 잠시 후 다시 시도해주세요.")
             await interaction.edit_original_response(view=error_layout, embeds=[], attachments=[])
             return
         season_id, season_name = season
 
         ranking_data = await fetch_ranking_data(self.client, season_id, use_cache=True)
         if not ranking_data:
-            error_layout = create_error_layout("오류 발생", "랭킹 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.", self.client)
+            error_layout = create_error_layout("랭킹 정보를 가져올 수 없습니다. 잠시 후 다시 시도해주세요.")
             await interaction.edit_original_response(view=error_layout, embeds=[], attachments=[])
             return
 
@@ -221,7 +222,7 @@ class Ranking(commands.Cog):
 
         first_page_users = await get_ranking_info(self.client, season_id, 1)
         if not first_page_users:
-            error_layout = create_error_layout("오류 발생", "랭킹 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.", self.client)
+            error_layout = create_error_layout("랭킹 정보를 가져올 수 없습니다. 잠시 후 다시 시도해주세요.")
             await interaction.edit_original_response(view=error_layout, embeds=[], attachments=[])
             return
 
