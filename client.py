@@ -10,6 +10,7 @@ from utils.config import config
 from utils.layouts import create_error_layout
 from utils.logging_config import get_logger
 from utils.api_client import api_client
+from utils.character_names import refresh_character_names
 
 logger = get_logger(__name__)
 
@@ -21,7 +22,7 @@ class ERClient(commands.Bot):
             intents.message_content = True
             intents.presences = False
 
-        super().__init__(command_prefix="!", intents=intents)
+        super().__init__(command_prefix="!", intents=intents, activity=discord.Game(name="이터널 리턴"))
 
         # data 디렉토리 생성
         os.makedirs("data", exist_ok=True)
@@ -79,6 +80,8 @@ class ERClient(commands.Bot):
             ]:
                 await self.load_extension(module)
 
+            self.refresh_names.start()
+
             # 커맨드 동기화는 SYNC_COMMANDS=1 환경변수가 설정된 경우에만 수행
             # 매 재시작마다 sync하면 Discord rate limit에 걸려 연결 끊김/재연결 반복 발생
             if os.getenv('SYNC_COMMANDS') == '1':
@@ -90,17 +93,10 @@ class ERClient(commands.Bot):
         except Exception:
             raise
 
-    @tasks.loop(minutes=30.0)
-    async def change_status(self):
-        """30분마다 봇의 상태를 업데이트합니다."""
-        try:
-            await self.change_presence(activity=discord.Game(name=f"{len(self.guilds)}개의 서버에서 일"))
-        except Exception as e:
-            logger.debug(f"상태 업데이트 중 오류 (무시됨): {e}")
-
-    @change_status.before_loop
-    async def before_change_status(self):
-        await self.wait_until_ready()
+    @tasks.loop(hours=24)
+    async def refresh_names(self):
+        """시즌 중 추가되는 신규 실험체 이름 반영"""
+        await refresh_character_names()
 
     async def on_disconnect(self):
         """봇이 연결이 끊어졌을 때 호출됩니다."""

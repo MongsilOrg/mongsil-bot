@@ -98,10 +98,6 @@ async def on_ready():
 
     logger.info(f"{client.user} 온라인")
 
-    # 태스크 시작
-    if not client.change_status.is_running():
-        client.change_status.start()
-
 @client.event
 async def on_message(message: discord.Message):
     """메시지를 수신했을 때 실행됩니다."""

@@ -1,9 +1,16 @@
 """
 캐릭터 이름 유틸리티
 """
+import re
 from typing import Dict
 
-# 캐릭터 코드 → 이름 매핑
+from .api_client import api_client
+from .config import config
+from .logging_config import get_logger
+
+logger = get_logger('캐릭터명')
+
+# L10N 수신 실패 시 폴백, 기동 후 L10N 값으로 덮어씀
 CHARACTER_NAMES: Dict[int, str] = {
     1: "재키", 2: "아야", 3: "피오라", 4: "매그너스", 5: "자히르", 6: "나딘", 7: "현우", 8: "하트", 9: "아이솔", 10: "리 다이린",
     11: "유키", 12: "혜진", 13: "쇼우", 14: "키아라", 15: "시셀라", 16: "실비아", 17: "아드리아나", 18: "쇼이치", 19: "엠마", 20: "레녹스",
@@ -14,8 +21,28 @@ CHARACTER_NAMES: Dict[int, str] = {
     61: "이렘", 62: "테오도르", 63: "이안", 64: "바냐", 65: "데비&마를렌", 66: "아르다", 67: "아비게일", 68: "알론소", 69: "레니", 70: "츠바메",
     71: "케네스", 72: "카티야", 73: "샬럿", 74: "다르코", 75: "르노어", 76: "가넷", 77: "유민", 78: "히스이", 79: "유스티나", 80: "이슈트반",
     81: "니아", 82: "슈린", 83: "헨리", 84: "블레어", 85: "미르카", 86: "펜리르", 87: "코렐라인", 88: "비형",
-    89: "크레이버",
+    89: "크레이버", 90: "루치아",
 }
+
+_L10N_NAME = re.compile(r"^Character/Name/(\d+)┃(.+)$", re.MULTILINE)
+
+
+async def refresh_character_names() -> None:
+    """L10N Korean 파일에서 캐릭터 이름을 다시 읽는다. 실패하면 기존 값 유지."""
+    try:
+        meta = await api_client.get(f"{config.api_url}/l10n/Korean", use_cache=False)
+        session = await api_client.get_session()
+        async with session.get(meta['data']['l10Path']) as response:
+            response.raise_for_status()
+            text = await response.text(encoding='utf-8')
+        names = {int(code): name.strip() for code, name in _L10N_NAME.findall(text)}
+    except Exception as e:
+        logger.warning(f"캐릭터 이름 갱신 실패, 기존 목록 유지: {type(e).__name__}: {e}")
+        return
+
+    if names:
+        CHARACTER_NAMES.update(names)
+        logger.info(f"캐릭터 이름 {len(names)}개 갱신")
 
 
 def get_character_name(character_code: int) -> str:
