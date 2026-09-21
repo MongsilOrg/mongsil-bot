@@ -6,6 +6,9 @@
 class TierSystem:
     """티어 시스템을 관리하는 클래스"""
 
+    # 이터니티와 데미갓의 최소 RP, 미스릴 기준 + 700
+    RANKED_GATE = 8300
+
     # 티어 정보를 담는 클래스 변수
     TIERS = {
         "이터니티": {"base": 8300, "icon": "10"},
@@ -57,9 +60,8 @@ class TierSystem:
         if mmr == 0:
             return "언랭크"
 
-        # 이터니티와 데미갓은 미스릴 RP + 700 도달 후 순위 기반
-        ranked_gate = cls.TIERS["미스릴"]["base"] + 700
-        if mmr >= ranked_gate:
+        # 이터니티와 데미갓은 RANKED_GATE 도달 후 순위 기반
+        if mmr >= cls.RANKED_GATE:
             if rank <= 300:
                 return "이터니티"
             elif rank <= 1000:

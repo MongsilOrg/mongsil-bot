@@ -12,6 +12,7 @@ from utils.layouts import create_error_layout
 from utils.errors import handle_errors
 from utils.logging_config import get_logger
 from utils.rank_helpers import RANKING_SERVER, SERVER_NAMES, fetch_ranking_data
+from utils.tier_system import TierSystem
 
 logger = get_logger('레이팅')
 
@@ -43,28 +44,30 @@ async def fetch_rating_info(client: ERClient, season_id: int) -> Tuple[Optional[
         logger.error(f"레이팅 정보 조회 중 오류 발생: {e}", exc_info=True)
         return None, None
 
+def cut_rp(user: Optional[Dict]) -> Optional[int]:
+    """순위 컷 RP. 시즌 초 순위권 점수가 RANKED_GATE보다 낮으면 GATE가 실제 컷"""
+    return max(int(user.get('mmr', 0)), TierSystem.RANKED_GATE) if user else None
+
+
 def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], season_name: str) -> ui.LayoutView:
     """레이팅 정보 LayoutView를 생성합니다."""
-    def cut_text(tier: str, rank: int, user: Optional[Dict]) -> str:
-        value = f"**{user.get('mmr', 0):,}** RP" if user else "정보 없음"
-        return f"{tier} {value}\n-# {rank}등"
+    eternity, demigod = cut_rp(rank_300), cut_rp(rank_1000)
 
-    now_ts = int(datetime.now(timezone.utc).timestamp())
-    children = [
-        ui.TextDisplay(f"### {season_name} {SERVER_NAMES[RANKING_SERVER]} 이터컷"),
-        ui.Separator(),
-        ui.TextDisplay(cut_text("이터니티", 300, rank_300)),
-        ui.Separator(),
-        ui.TextDisplay(cut_text("데미갓", 1000, rank_1000)),
-        ui.Separator(),
-    ]
-    footnote = f"<t:{now_ts}:t> 기준"
-    if rank_300 and rank_1000:
-        footnote = f"컷 차이 {rank_300.get('mmr', 0) - rank_1000.get('mmr', 0):,} RP | " + footnote
-    children.append(ui.TextDisplay(f"-# {footnote}"))
+    def cut_line(tier: str, rank: int, rp: Optional[int]) -> str:
+        return f"{tier} **{rp:,}** RP `{rank}등`" if rp else f"{tier} 정보 없음"
+
+    footnote = f"<t:{int(datetime.now(timezone.utc).timestamp())}:t> 기준"
+    if eternity and demigod:
+        footnote = f"컷 차이 {eternity - demigod:,} RP | {footnote}"
 
     view = ui.LayoutView()
-    view.add_item(ui.Container(*children, accent_colour=discord.Colour.blurple()))
+    view.add_item(ui.Container(
+        ui.TextDisplay(f"### 이터컷\n-# {season_name} | {SERVER_NAMES[RANKING_SERVER]}"),
+        ui.Separator(),
+        ui.TextDisplay(f"{cut_line('이터니티', 300, eternity)}\n{cut_line('데미갓', 1000, demigod)}"),
+        ui.TextDisplay(f"-# {footnote}"),
+        accent_colour=discord.Colour.blurple(),
+    ))
     return view
 
 
