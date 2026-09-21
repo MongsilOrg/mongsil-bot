@@ -110,3 +110,23 @@ async def fetch_ranking_data(client: ERClient, season_id: int, use_cache: bool =
     except Exception as e:
         logger.error(f"랭킹 API 호출 중 오류 발생: {e}", exc_info=True)
         return None
+
+
+async def fetch_user_rank(client: ERClient, user_id: str, season_id: int) -> Optional[Dict]:
+    """
+    유저의 서버 순위를 가져옵니다. 이터니티와 데미갓은 이 serverRank로 판정합니다.
+
+    Returns:
+        userRank 딕셔너리, 실패 시 None
+    """
+    url = f"{config.api_url}/rank/uid/{user_id}/{season_id}/3"
+    try:
+        data = await client.api_client.get(url, ttl=300)
+    except APIError as e:
+        logger.warning(f"서버 순위 조회 실패, 통합 순위로 대체: {e.message}")
+        return None
+
+    if data and data.get('code') == 200:
+        return data.get('userRank')
+    logger.warning(f"서버 순위 응답 이상: {data.get('message') if data else 'No response'}")
+    return None

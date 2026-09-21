@@ -1,8 +1,11 @@
+import asyncio
+from urllib.parse import quote
+
 import discord
 from discord import ui
 from discord.ext import commands
 from discord import app_commands
-from typing import Dict, Any
+from typing import Any, Dict, Optional
 from client import ERClient
 
 from commands.season import get_ranked_season
@@ -10,100 +13,81 @@ from utils.layouts import create_loading_layout
 from utils.errors import handle_errors, validate_nickname, NotFoundError, APIError
 from utils.logging_config import get_logger
 from utils.character_names import get_character_name
-from utils.rank_helpers import fetch_user_stats_solo
+from utils.rank_helpers import SERVER_NAMES, fetch_user_rank, fetch_user_stats_solo
 from utils.tier_system import TierSystem
 from utils.emojis import EMOJIS
 
 logger = get_logger('랭크')
 
 
-def create_rank_layout(nickname: str, stats: Dict[str, Any], client: ERClient) -> ui.LayoutView:
+def create_rank_layout(nickname: str, stats: Dict[str, Any], user_rank: Optional[Dict[str, Any]], season_name: str) -> ui.LayoutView:
     """랭크 정보 LayoutView를 생성합니다."""
-    # 기본 정보 파싱
     mmr = int(stats.get('mmr', 0))
-    rank = int(stats.get('rank', 0))
-    rank_size = int(stats.get('rankSize', 0))
     games = int(stats.get('totalGames', 0))
     wins = int(stats.get('totalWins', 0))
-    avg_rank = float(stats.get('averageRank', 0.0))
-    avg_kills = float(stats.get('averageKills', 0.0))
-    top3_rate = float(stats.get('top3', 0.0))
-
-    # API에서 실제 닉네임 가져오기 (대소문자 구분 등)
+    win_rate = (wins / games * 100) if games > 0 else 0.0
     actual_nickname = stats.get('nickname', nickname)
 
-    # 계산이 필요한 통계
-    win_rate = (wins / games * 100) if games > 0 else 0.0
+    # 이터니티와 데미갓은 귀속 서버 순위 기준. 통계의 rank는 통합 순위라 서버 컷과 어긋남
+    server_rank = int(user_rank.get('serverRank', 0)) if user_rank else 0
+    tier = TierSystem.get_tier(mmr, server_rank or int(stats.get('rank', 0)))
 
-    # 티어 정보 계산
-    tier = TierSystem.get_tier(mmr, rank)
+    if server_rank and server_rank <= 1000:
+        server = SERVER_NAMES.get(user_rank.get('serverCode'), "서버")
+        place = f"{server} {server_rank:,}등"
+    else:
+        rank = int(stats.get('rank', 0))
+        rank_size = int(stats.get('rankSize', 0))
+        place = f"상위 {rank / rank_size * 100:.2f}%" if rank_size else ""
 
-    # 상위 백분율 계산
-    top_percentage = (rank / rank_size * 100) if rank_size > 0 else 0.0
-
-    # 티어 아이콘 URL (tier2: 정사각 패딩본, 원본 비율이면 썸네일에서 상하가 잘린다)
-    icon_name = TierSystem.get_tier_icon(tier)
-    icon_url = f"https://cdn.mongsil.dev/mongsilbot/tier2/{icon_name}.png"
-
-    # LayoutView 구성
-    view = ui.LayoutView()
-
-    container_items = []
-
-    # 헤더 섹션: 닉네임 + 티어 정보 + 썸네일
+    icon_url = f"https://cdn.mongsil.dev/mongsilbot/tier2/{TierSystem.get_tier_icon(tier)}.png"
     header_text = (
         f"## {actual_nickname}\n"
         f"**{tier}** | {mmr:,} RP\n"
-        f"-# {rank:,}등, 상위 {top_percentage:.2f}%"
+        f"-# {season_name}" + (f" | {place}" if place else "")
     )
-    container_items.append(
-        ui.Section(
-            ui.TextDisplay(header_text),
-            accessory=ui.Thumbnail(media=icon_url)
-        )
-    )
-
-    container_items.append(ui.Separator())
 
     # 탑1은 솔로 승률과 같은 지표라 표시하지 않는다
     stats_text = (
-        f"**{games:,}**게임 | 승률 **{win_rate:.0f}%** | 탑3 **{top3_rate*100:.0f}%**\n"
-        f"평균 **{avg_rank:.1f}**등 | 평균 킬 **{avg_kills:.1f}**"
+        f"**{games:,}**게임 | 승률 **{win_rate:.0f}%** | 탑3 **{float(stats.get('top3', 0.0)) * 100:.0f}%**\n"
+        f"평균 **{float(stats.get('averageRank', 0.0)):.1f}**등 | "
+        f"킬 **{float(stats.get('averageKills', 0.0)):.1f}** | "
+        f"어시 **{float(stats.get('averageAssistants', 0.0)):.1f}**"
     )
-    container_items.append(ui.TextDisplay(stats_text))
+    escapes = int(stats.get('escapeCount', 0))
+    if escapes:
+        stats_text += f" | 탈출 **{escapes}**"
 
-    # 캐릭터 통계 정보 추가 (상위 3개 캐릭터)
-    character_stats = stats.get('characterStats', [])
-    if character_stats:
-        top_characters = sorted(character_stats, key=lambda x: x.get('totalGames', 0), reverse=True)[:3]
+    container_items = [
+        ui.Section(ui.TextDisplay(header_text), accessory=ui.Thumbnail(media=icon_url)),
+        ui.Separator(),
+        ui.TextDisplay(stats_text),
+    ]
 
-        if top_characters:
-            container_items.append(ui.Separator())
-            char_lines = []
-            for char in top_characters:
-                char_code = char.get('characterCode', 0)
-                char_games = char.get('totalGames', 0)
-                char_wins = char.get('wins', 0)
-                char_win_rate = (char_wins / char_games * 100) if char_games > 0 else 0.0
-
-                char_name = get_character_name(char_code)
-                char_lines.append(f"**{char_name}** {char_games}게임, 승률 {char_win_rate:.0f}%")
-            container_items.append(ui.TextDisplay("### 모스트 캐릭터\n" + "\n".join(char_lines)))
-
-    view.add_item(ui.Container(*container_items, accent_colour=discord.Colour.blurple()))
-
-    # DAK.GG 링크 버튼
-    view.add_item(
-        ui.ActionRow(
-            ui.Button(
-                style=discord.ButtonStyle.link,
-                label="DAK.GG",
-                emoji=EMOJIS['chart'],
-                url=f"https://dak.gg/er/players/{actual_nickname}"
+    top_characters = sorted(stats.get('characterStats') or [], key=lambda x: x.get('totalGames', 0), reverse=True)[:3]
+    if top_characters:
+        char_lines = []
+        for char in top_characters:
+            char_games = char.get('totalGames', 0)
+            char_win = (char.get('wins', 0) / char_games * 100) if char_games else 0.0
+            char_top3 = (char.get('top3', 0) / char_games * 100) if char_games else 0.0
+            char_lines.append(
+                f"**{get_character_name(char.get('characterCode', 0))}** "
+                f"{char_games}게임 | 승률 {char_win:.0f}% | 탑3 {char_top3:.0f}%"
             )
-        )
-    )
+        container_items.append(ui.Separator())
+        container_items.append(ui.TextDisplay("### 모스트 캐릭터\n" + "\n".join(char_lines)))
 
+    view = ui.LayoutView()
+    view.add_item(ui.Container(*container_items, accent_colour=discord.Colour.blurple()))
+    view.add_item(ui.ActionRow(
+        ui.Button(
+            style=discord.ButtonStyle.link,
+            label="DAK.GG",
+            emoji=EMOJIS['chart'],
+            url=f"https://dak.gg/er/players/{quote(actual_nickname)}"
+        )
+    ))
     return view
 
 
@@ -121,13 +105,11 @@ class Rank(commands.Cog):
 
         await interaction.response.send_message(view=create_loading_layout("랭크 조회 중"))
 
-        # 시즌 정보 조회
         season = await get_ranked_season()
         if not season:
             raise APIError("시즌 정보를 가져올 수 없습니다.", "현재 시즌 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.")
         season_id, season_name = season
 
-        # 유저 UID 조회
         user_id = await self.client.get_user_nickname(validated_nickname)
         if not user_id:
             raise NotFoundError(
@@ -135,15 +117,12 @@ class Rank(commands.Cog):
                 f"'{validated_nickname}' 유저를 찾을 수 없습니다.\n닉네임을 다시 확인해주세요."
             )
 
-        # 유저 통계 조회
-        stats = await fetch_user_stats_solo(self.client, user_id, season_id, use_cache=True)
-        if not stats:
-            raise NotFoundError(
-                f"랭크 정보가 없습니다: {validated_nickname}",
-                f"'{validated_nickname}' 유저의 {season_name} 랭크 게임 기록이 없습니다."
-            )
+        stats, user_rank = await asyncio.gather(
+            fetch_user_stats_solo(self.client, user_id, season_id, use_cache=True),
+            fetch_user_rank(self.client, user_id, season_id),
+        )
 
-        view = create_rank_layout(validated_nickname, stats, self.client)
+        view = create_rank_layout(validated_nickname, stats, user_rank, season_name)
         await interaction.edit_original_response(view=view, embeds=[], attachments=[])
 
 async def setup(client: ERClient):
