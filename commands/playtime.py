@@ -183,7 +183,7 @@ async def get_playtime_info(client: ERClient, nickname: str) -> Optional[PlayTim
     if not user_id:
         raise NotFoundError(
             f"유저를 찾을 수 없습니다: {nickname}",
-            f"'{nickname}' 유저를 찾을 수 없어요.\n닉네임을 다시 확인해주세요."
+            f"'{nickname}' 유저를 찾을 수 없습니다.\n닉네임을 다시 확인해주세요."
         )
 
     # 오늘을 포함한 최근 7일 날짜 리스트 생성 (오늘부터 6일 전까지)
@@ -206,7 +206,7 @@ class Playtime(commands.Cog):
 
     @app_commands.command(name="플탐", description="최근 7일 플레이 타임 조회")
     @app_commands.describe(닉네임="조회할 유저의 닉네임 (2-20자, 특수문자 제외)")
-    @handle_errors(user_message="플레이 타임 정보를 가져오는 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.")
+    @handle_errors(user_message="플레이 타임 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def playtime(
         self,
         interaction: discord.Interaction,
@@ -232,7 +232,7 @@ class Playtime(commands.Cog):
             container = ui.Container(accent_colour=discord.Colour.blurple())
             container.add_item(ui.TextDisplay(
                 f"### {validated_nickname}님의 플레이 기록\n"
-                "최근 7일간 플레이 기록이 없어요."
+                "최근 7일간 플레이 기록이 없습니다."
             ))
             container.add_item(ui.Separator(visible=False))
             container.add_item(ui.TextDisplay(footer_text(self.client)))

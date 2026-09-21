@@ -58,7 +58,7 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], cl
             f"**{mmr_300:,}** RP | {nick_300}"
         ))
     else:
-        children.append(ui.TextDisplay("이터니티 (300등)\n-# 정보를 가져올 수 없어요."))
+        children.append(ui.TextDisplay("이터니티 (300등)\n-# 정보를 가져올 수 없습니다."))
 
     children.append(ui.Separator())
 
@@ -71,7 +71,7 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], cl
             f"**{mmr_1000:,}** RP | {nick_1000}"
         ))
     else:
-        children.append(ui.TextDisplay("데미갓 (1000등)\n-# 정보를 가져올 수 없어요."))
+        children.append(ui.TextDisplay("데미갓 (1000등)\n-# 정보를 가져올 수 없습니다."))
 
     # Show MMR gap if both available
     if rank_300 and rank_1000:
@@ -91,7 +91,7 @@ class Rating(commands.Cog):
         self.client = client
 
     @app_commands.command(name="이터컷", description="이터니티/데미갓 컷 조회")
-    @handle_errors(user_message="레이팅 정보를 가져오는 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.")
+    @handle_errors(user_message="레이팅 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def rating_command(self, interaction: discord.Interaction):
         """현재 시즌의 이터니티/데미갓 컷을 확인합니다."""
         await interaction.response.defer()
@@ -100,7 +100,7 @@ class Rating(commands.Cog):
         if not season:
             error_view = create_error_layout(
                 "시즌 정보 오류",
-                "현재 시즌 정보를 가져올 수 없어요.\n잠시 후 다시 시도해주세요.",
+                "현재 시즌 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.",
                 self.client
             )
             # 공개 defer 뒤 첫 followup이라 ephemeral은 적용되지 않는다
@@ -114,7 +114,7 @@ class Rating(commands.Cog):
         if not rank_300 and not rank_1000:
             error_view = create_error_layout(
                 "레이팅 정보 없음",
-                f"{season_name}의 레이팅 정보를 가져올 수 없어요.\n잠시 후 다시 시도해주세요.",
+                f"{season_name}의 레이팅 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.",
                 self.client
             )
             await interaction.followup.send(view=error_view)

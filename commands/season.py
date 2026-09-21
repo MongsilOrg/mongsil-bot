@@ -345,7 +345,7 @@ def create_season_layout(season_info: Optional[SeasonInfo], client: ERClient) ->
     if not season_info:
         return create_error_layout(
             "시즌 정보 오류",
-            "현재 시즌 정보를 가져올 수 없어요.\n잠시 후 다시 시도해주세요.",
+            "현재 시즌 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.",
             client
         )
 
@@ -431,7 +431,7 @@ class Season(commands.Cog):
         self.client = client
 
     @app_commands.command(name="시즌", description="현재 시즌 정보 조회")
-    @handle_errors(user_message="시즌 정보를 가져오는 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.")
+    @handle_errors(user_message="시즌 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def season_command(self, interaction: discord.Interaction):
         """
         현재 시즌 정보를 보여줍니다.

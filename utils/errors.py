@@ -23,7 +23,7 @@ class BotError(Exception):
     """봇 관련 기본 예외 클래스"""
     def __init__(self, message: str, user_message: Optional[str] = None):
         self.message = message
-        self.user_message = user_message or "오류가 발생했어요. 잠시 후 다시 시도해주세요."
+        self.user_message = user_message or "오류가 발생했습니다. 잠시 후 다시 시도해주세요."
         super().__init__(self.message)
 
 class APIError(BotError):
@@ -64,7 +64,7 @@ async def _send_error(interaction: discord.Interaction, error_text: str):
 
 
 def handle_errors(
-    user_message: str = "명령어 실행 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.",
+    user_message: str = "명령어 실행 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
     log_error: bool = True
 ):
     """에러 처리를 위한 데코레이터"""
@@ -117,6 +117,6 @@ def validate_nickname(nickname: str) -> str:
     for char in forbidden_chars:
         if char in nickname:
             raise ValidationError(f"닉네임에 사용할 수 없는 문자가 포함되어 있습니다: {char}",
-                                f"닉네임에 특수문자 '{char}'는 쓸 수 없어요.\n영문, 한글, 숫자만 입력해주세요.")
+                                f"닉네임에 특수문자 '{char}'는 쓸 수 없습니다.\n영문, 한글, 숫자만 입력해주세요.")
 
     return nickname

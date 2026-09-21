@@ -203,7 +203,7 @@ class Concurrent(commands.Cog):
         concurrent_data.save_to_file()
 
     @app_commands.command(name="동접", description="현재 동시 접속자 수와 24시간 통계")
-    @handle_errors(user_message="동시 접속자 수를 가져오는 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.")
+    @handle_errors(user_message="동시 접속자 수를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def concurrent_command(self, interaction: discord.Interaction):
         """현재 이터널 리턴의 동시 접속자 수를 확인합니다."""
         await interaction.response.defer()
@@ -212,7 +212,7 @@ class Concurrent(commands.Cog):
         if not config.steam_api_key:
             layout = create_error_layout(
                 "Steam API 키 없음",
-                "Steam API 키가 설정되지 않아 동시 접속자 수를 조회할 수 없어요.\n관리자에게 문의해주세요.",
+                "Steam API 키가 설정되지 않아 동시 접속자 수를 조회할 수 없습니다.\n관리자에게 문의해주세요.",
                 self.client
             )
             # 공개 defer 뒤 첫 followup이라 ephemeral은 적용되지 않는다
@@ -224,7 +224,7 @@ class Concurrent(commands.Cog):
         if current_count is None:
             layout = create_error_layout(
                 "데이터 조회 실패",
-                "현재 동시 접속자 수를 가져올 수 없어요.\n잠시 후 다시 시도해주세요.",
+                "현재 동시 접속자 수를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.",
                 self.client
             )
             await interaction.followup.send(view=layout)

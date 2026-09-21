@@ -117,7 +117,7 @@ class Rank(commands.Cog):
 
     @app_commands.command(name="랭크", description="유저 랭크 정보 조회")
     @app_commands.describe(닉네임="조회할 유저의 닉네임 (2-20자, 특수문자 제외)")
-    @handle_errors(user_message="랭크 정보를 가져오는 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.")
+    @handle_errors(user_message="랭크 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def rank_command(self, interaction: discord.Interaction, 닉네임: str):
         """유저의 랭크 정보를 조회합니다."""
         # 입력 검증 (실패 시 handle_errors가 user_message를 ephemeral로 전송)
@@ -134,7 +134,7 @@ class Rank(commands.Cog):
         # 시즌 정보 조회
         season = await get_ranked_season()
         if not season:
-            raise APIError("시즌 정보를 가져올 수 없습니다.", "현재 시즌 정보를 가져올 수 없어요.\n잠시 후 다시 시도해주세요.")
+            raise APIError("시즌 정보를 가져올 수 없습니다.", "현재 시즌 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.")
         season_id, season_name = season
 
         # 유저 UID 조회
@@ -142,7 +142,7 @@ class Rank(commands.Cog):
         if not user_id:
             raise NotFoundError(
                 f"유저를 찾을 수 없습니다: {validated_nickname}",
-                f"'{validated_nickname}' 유저를 찾을 수 없어요.\n닉네임을 다시 확인해주세요."
+                f"'{validated_nickname}' 유저를 찾을 수 없습니다.\n닉네임을 다시 확인해주세요."
             )
 
         # 유저 통계 조회
@@ -150,7 +150,7 @@ class Rank(commands.Cog):
         if not stats:
             raise NotFoundError(
                 f"랭크 정보가 없습니다: {validated_nickname}",
-                f"'{validated_nickname}' 유저의 {season_name} 랭크 게임 기록이 없어요."
+                f"'{validated_nickname}' 유저의 {season_name} 랭크 게임 기록이 없습니다."
             )
 
         view = create_rank_layout(validated_nickname, stats, self.client)
