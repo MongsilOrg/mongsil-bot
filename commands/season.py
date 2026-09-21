@@ -218,11 +218,16 @@ def create_season_layout(season_info: Optional[SeasonInfo]) -> ui.LayoutView:
     elapsed = (now - season_info.start_date).total_seconds()
     progress = min(max(elapsed / total * 100, 0), 100) if total > 0 else 0
 
-    # Discord 상대 시각은 클라이언트 언어로 'N일 후', 'N일 전'으로 렌더링됨
+    def d_day(target: datetime) -> str:
+        days = (target.date() - now.date()).days
+        return f"**D-{days}**" if days > 0 else "**D-day**"
+
     if now < season_info.start_date:
-        remaining = f"<t:{int(season_info.start_date.timestamp())}:R> 시작"
+        remaining = f"시작 {d_day(season_info.start_date)}"
+    elif now < season_info.end_date:
+        remaining = f"종료 {d_day(season_info.end_date)}"
     else:
-        remaining = f"<t:{int(season_info.end_date.timestamp())}:R> 종료"
+        remaining = "종료됨"
 
     filled = round(progress / 10)
     progress_bar = "▰" * filled + "▱" * (10 - filled)

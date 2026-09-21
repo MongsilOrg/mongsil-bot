@@ -148,7 +148,7 @@ def create_playtime_layout(stats: PlayTimeStats) -> ui.LayoutView:
     if stats.games_played > 0:
         avg_game = stats.total_seconds // stats.games_played
         summary += f" | 게임당 평균 **{format_duration(avg_game)}**"
-    summary += "\n-# " + " | ".join(f"{name} {count}" for name, count in stats.mode_counts.items())
+    summary += "\n-# " + " | ".join(f"{name} {count}게임" for name, count in stats.mode_counts.items())
     children.append(ui.TextDisplay(summary))
     children.append(ui.Separator())
 
@@ -174,7 +174,7 @@ def create_daily_chart(daily_stats: Dict[datetime.date, int]) -> str:
 
     for date, play_time in sorted(daily_stats.items()):
         weekday = WEEKDAYS[date.weekday()]
-        date_str = f"{date.strftime('%m/%d')} ({weekday})"
+        date_str = f"{f'{date.month}/{date.day}':>5} {weekday}"
 
         if play_time == 0:
             chart_lines.append(f"`{date_str}` ▱▱▱▱▱▱▱▱▱▱ `-`")

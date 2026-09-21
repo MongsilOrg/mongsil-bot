@@ -70,10 +70,8 @@ class PaginationView(CooldownLayoutView):
         children = [ui.TextDisplay(f"### {self.season_name} {SERVER_NAMES[RANKING_SERVER]} 랭킹")]
         children.append(ui.Separator())
 
-        for i, u in enumerate(users):
+        for u in users:
             children.append(ui.TextDisplay(format_user_text(u)))
-            if i < len(users) - 1:
-                children.append(ui.Separator())
 
         self.add_item(ui.Container(*children, accent_colour=discord.Colour.blurple()))
 
