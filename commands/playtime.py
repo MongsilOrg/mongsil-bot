@@ -49,7 +49,8 @@ async def get_user_games(client, user_id: str, start_date: datetime.date) -> Lis
     """유저의 게임 기록을 가져옵니다."""
     games = []
     next_cursor = None
-    max_requests = 10  # 최대 요청 수 제한
+    # 페이지당 10게임
+    max_requests = 30
     request_count = 0
 
     try:
