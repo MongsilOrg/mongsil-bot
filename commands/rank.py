@@ -5,22 +5,46 @@ import discord
 from discord import ui
 from discord.ext import commands
 from discord import app_commands
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 from client import ERClient
 
+from commands.rating import cut_rp, fetch_rating_info
 from commands.season import get_ranked_season
 from utils.layouts import create_loading_layout
 from utils.errors import handle_errors, validate_nickname, NotFoundError, APIError
 from utils.logging_config import get_logger
 from utils.character_names import get_character_name
-from utils.rank_helpers import SERVER_NAMES, fetch_user_rank, fetch_user_stats_solo
+from utils.rank_helpers import RANKING_SERVER, SERVER_NAMES, fetch_user_rank, fetch_user_stats_solo
 from utils.tier_system import TierSystem
 from utils.emojis import EMOJIS
 
 logger = get_logger('랭크')
 
 
-def create_rank_layout(nickname: str, stats: Dict[str, Any], user_rank: Optional[Dict[str, Any]], season_name: str) -> ui.LayoutView:
+def next_goal(tier: str, mmr: int, cuts: Tuple[Optional[int], Optional[int]]) -> str:
+    """다음 티어까지 남은 RP 문구. 목표가 없으면 빈 문자열"""
+    eternity_cut, demigod_cut = cuts
+    if tier == "데미갓":
+        target, label = eternity_cut, "이터니티 컷"
+    elif tier == "미스릴":
+        target, label = demigod_cut or TierSystem.RANKED_GATE, "데미갓 컷"
+    else:
+        step = TierSystem.next_rp_tier(tier)
+        if not step:
+            return ""
+        label, target = step
+    if not target or target <= mmr:
+        return ""
+    return f"{label}까지 {target - mmr:,} RP"
+
+
+def create_rank_layout(
+    nickname: str,
+    stats: Dict[str, Any],
+    user_rank: Optional[Dict[str, Any]],
+    season_name: str,
+    cuts: Tuple[Optional[int], Optional[int]] = (None, None),
+) -> ui.LayoutView:
     """랭크 정보 LayoutView를 생성합니다."""
     mmr = int(stats.get('mmr', 0))
     games = int(stats.get('totalGames', 0))
@@ -46,6 +70,9 @@ def create_rank_layout(nickname: str, stats: Dict[str, Any], user_rank: Optional
         f"**{tier}** | {mmr:,} RP\n"
         f"-# {season_name}" + (f" | {place}" if place else "")
     )
+    goal = next_goal(tier, mmr, cuts)
+    if goal:
+        header_text += f"\n-# {goal}"
 
     # 탑1은 솔로 승률과 같은 지표라 표시하지 않는다
     stats_text = (
@@ -54,9 +81,6 @@ def create_rank_layout(nickname: str, stats: Dict[str, Any], user_rank: Optional
         f"킬 **{float(stats.get('averageKills', 0.0)):.1f}** | "
         f"어시 **{float(stats.get('averageAssistants', 0.0)):.1f}**"
     )
-    escapes = int(stats.get('escapeCount', 0))
-    if escapes:
-        stats_text += f" | 탈출 **{escapes}**"
 
     container_items = [
         ui.Section(ui.TextDisplay(header_text), accessory=ui.Thumbnail(media=icon_url)),
@@ -122,7 +146,14 @@ class Rank(commands.Cog):
             fetch_user_rank(self.client, user_id, season_id),
         )
 
-        view = create_rank_layout(validated_nickname, stats, user_rank, season_name)
+        # 순위 컷은 아시아1 목록만 있어 다른 서버 유저는 컷 목표를 생략
+        cuts = (None, None)
+        if (user_rank and user_rank.get('serverCode') == RANKING_SERVER
+                and int(stats.get('mmr', 0)) >= TierSystem.TIERS["미스릴"]["base"]):
+            rank_300, rank_1000 = await fetch_rating_info(self.client, season_id)
+            cuts = (cut_rp(rank_300), cut_rp(rank_1000))
+
+        view = create_rank_layout(validated_nickname, stats, user_rank, season_name, cuts)
         await interaction.edit_original_response(view=view, embeds=[], attachments=[])
 
 async def setup(client: ERClient):

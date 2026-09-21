@@ -3,6 +3,9 @@
 """
 
 
+from typing import Optional, Tuple
+
+
 class TierSystem:
     """티어 시스템을 관리하는 클래스"""
 
@@ -89,3 +92,13 @@ class TierSystem:
             아이콘 파일명 (예: "6")
         """
         return cls.TIERS.get(tier, cls.TIERS["언랭크"])["icon"]
+
+    @classmethod
+    def next_rp_tier(cls, tier: str) -> Optional[Tuple[str, int]]:
+        """RP로 오르는 바로 위 티어와 시작 RP. 미스릴 이상과 언랭크는 None."""
+        ladder = [(name, info["base"]) for name, info in cls.TIERS.items()
+                  if name not in ("이터니티", "데미갓", "언랭크")]
+        names = [name for name, _ in ladder]
+        if tier not in names or names.index(tier) == 0:
+            return None
+        return ladder[names.index(tier) - 1]
