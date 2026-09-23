@@ -1,8 +1,8 @@
 from urllib.parse import quote
 
 import discord
-import pytz
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from typing import Dict, List, Optional, NamedTuple
 from client import ERClient
 from discord import app_commands, ui
@@ -15,7 +15,7 @@ from utils.emojis import EMOJIS
 
 logger = get_logger('플탐')
 
-KST = pytz.timezone('Asia/Seoul')
+KST = ZoneInfo('Asia/Seoul')
 
 class GameStats(NamedTuple):
     """게임 통계 정보를 저장하는 네임드 튜플"""

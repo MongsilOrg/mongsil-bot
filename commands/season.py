@@ -4,7 +4,7 @@ from discord.ext import commands
 from discord import app_commands
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, Tuple, NamedTuple
-import pytz
+from zoneinfo import ZoneInfo
 from client import ERClient
 
 from utils.config import config
@@ -16,7 +16,7 @@ from utils.emojis import EMOJIS
 logger = get_logger('시즌')
 
 # 한국 시간대 설정
-KST = pytz.timezone('Asia/Seoul')
+KST = ZoneInfo('Asia/Seoul')
 
 # 시즌 관련 상수
 SEASON_ZERO_ID = 19  # 시즌 0이 되는 ID 값
@@ -182,7 +182,7 @@ def _parse_season_date(date_str: str) -> Optional[datetime]:
         try:
             dt = datetime.strptime(date_str, fmt)
             if dt.tzinfo is None:
-                dt = KST.localize(dt)
+                dt = dt.replace(tzinfo=KST)
             return dt
         except ValueError:
             continue

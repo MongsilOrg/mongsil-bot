@@ -4,9 +4,6 @@ discord.py>=2.3.0
 # 비동기 HTTP 클라이언트 (API 요청 및 로깅 로깅용)
 aiohttp>=3.9.0
 
-# 시간대 처리
-pytz>=2023.3
-
 # 환경 변수 관리
 python-dotenv>=1.0.0
 
