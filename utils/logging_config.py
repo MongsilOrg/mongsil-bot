@@ -8,6 +8,10 @@ from pathlib import Path
 from typing import Optional
 from logging.handlers import RotatingFileHandler
 
+APP_LOGGER = "mongsil-bot"
+LOG_FORMAT = "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s"
+DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+
 def setup_logging(
     level: str = "INFO",
     log_file: Optional[str] = None,
@@ -19,11 +23,7 @@ def setup_logging(
     is_dev = os.getenv('DEV_MODE', 'false').lower() == 'true'
     
     if format_string is None:
-        # 프로덕션에서는 간결한 형식 사용
-        if is_dev:
-            format_string = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        else:
-            format_string = "%(asctime)s - %(levelname)s - %(message)s"
+        format_string = LOG_FORMAT
     
     # 로그 레벨 설정
     numeric_level = getattr(logging, level.upper(), None)
@@ -31,7 +31,7 @@ def setup_logging(
         raise ValueError(f'Invalid log level: {level}')
     
     # 기본 포매터 설정
-    formatter = logging.Formatter(format_string)
+    formatter = logging.Formatter(format_string, datefmt=DATE_FORMAT)
     
     # 콘솔 핸들러 설정 - 프로덕션에서는 WARNING 이상만
     console_handler = logging.StreamHandler(sys.stdout)
@@ -73,6 +73,6 @@ def setup_logging(
     # urllib3 로거 레벨 조정 (aiohttp 내부에서 사용)
     logging.getLogger('urllib3').setLevel(logging.WARNING)
 
-def get_logger(name: str) -> logging.Logger:
-    """이름을 가진 로거를 반환합니다."""
-    return logging.getLogger(name)
+def get_logger(name: Optional[str] = None) -> logging.Logger:
+    """mongsil-bot 하위 로거를 반환합니다. 이름이 없으면 최상위 로거입니다."""
+    return logging.getLogger(f"{APP_LOGGER}.{name}" if name else APP_LOGGER)

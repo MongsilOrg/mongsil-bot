@@ -6,11 +6,11 @@ import asyncio
 from typing import Any, Optional, Dict
 from datetime import datetime, timedelta
 from collections import OrderedDict
-import logging
 from .config import config
 from .errors import APIError, BotError, redact_secrets
+from .logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger('api_client')
 
 class OptimizedAPIClient:
     """최적화된 API 클라이언트"""

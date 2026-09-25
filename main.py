@@ -77,7 +77,7 @@ sentry_sdk.init(
 
 # 로깅 설정
 setup_logging(level="INFO", log_file="bot.log")
-logger = get_logger(__name__)
+logger = get_logger()
 
 # Initialize bot
 # members 인텐트는 켜지 않는다. 유일한 용도가 /정보 유저 수 중복 제거였는데
