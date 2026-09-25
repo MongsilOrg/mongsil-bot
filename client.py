@@ -134,8 +134,10 @@ class ERClient(commands.Bot):
                 await interaction.response.send_message(view=layout, ephemeral=True)
             else:
                 await interaction.followup.send(view=layout, ephemeral=True)
-        except Exception:
-            pass
+        except discord.NotFound:
+            logger.debug("에러 응답 전송 생략: 만료된 인터랙션")
+        except discord.HTTPException as e:
+            logger.warning(f"에러 응답 전송 실패: {e}")
 
     async def close(self):
         """봇 종료 시 리소스를 정리합니다."""

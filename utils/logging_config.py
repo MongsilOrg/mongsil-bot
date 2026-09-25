@@ -33,10 +33,10 @@ def setup_logging(
     # 기본 포매터 설정
     formatter = logging.Formatter(format_string, datefmt=DATE_FORMAT)
     
-    # 콘솔 핸들러 설정 - 프로덕션에서는 WARNING 이상만
+    # 콘솔 핸들러 설정 - 프로덕션에서는 INFO 이상
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(formatter)
-    console_level = logging.DEBUG if is_dev else logging.WARNING
+    console_level = logging.DEBUG if is_dev else logging.INFO
     console_handler.setLevel(console_level)
     
     # 루트 로거 설정

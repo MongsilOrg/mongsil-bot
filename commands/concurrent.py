@@ -13,7 +13,7 @@ from client import ERClient
 from utils.api_client import api_client
 from utils.config import config
 from utils.layouts import create_error_layout
-from utils.errors import handle_errors
+from utils.errors import APIError, handle_errors
 from utils.logging_config import get_logger
 from utils.emojis import EMOJIS
 
@@ -21,6 +21,8 @@ logger = get_logger('동접')
 
 # Steam API URL
 STEAM_API_URL = 'https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/'
+
+FAIL_ALERT_THRESHOLD = 5
 
 
 def _as_utc(t: datetime) -> datetime:
@@ -130,32 +132,35 @@ async def get_current_player_count() -> Optional[int]:
         data = await api_client.get(STEAM_API_URL, params=params, use_cache=False)
 
         if not data:
-            logger.error("Steam API 응답이 비어있습니다.")
+            logger.warning("Steam API 응답이 비어있습니다.")
             return None
 
         # API 응답 검증
         if 'response' not in data:
-            logger.error("Steam API 응답에 'response' 필드가 없습니다.")
+            logger.warning("Steam API 응답에 'response' 필드가 없습니다.")
             return None
 
         response = data['response']
 
         # result 필드 검증 (1이 성공을 의미)
         if response.get('result') != 1:
-            logger.error(f"Steam API 오류: result={response.get('result')}")
+            logger.warning(f"Steam API 오류: result={response.get('result')}")
             return None
 
         if 'player_count' not in response:
-            logger.error("Steam API 응답에 'player_count' 필드가 없습니다.")
+            logger.warning("Steam API 응답에 'player_count' 필드가 없습니다.")
             return None
 
         player_count = response['player_count']
         if not isinstance(player_count, int) or player_count < 0:
-            logger.error(f"잘못된 플레이어 수 값: {player_count}")
+            logger.warning(f"잘못된 플레이어 수 값: {player_count}")
             return None
 
         return player_count
 
+    except APIError as e:
+        logger.warning(f"플레이어 수 조회 실패: {e.message}")
+        return None
     except Exception as e:
         logger.error(f"플레이어 수 조회 중 오류 발생: {e}", exc_info=True)
         return None
@@ -190,6 +195,7 @@ def create_concurrent_layout(current_count: int) -> ui.LayoutView:
 class Concurrent(commands.Cog):
     def __init__(self, client: ERClient):
         self.client = client
+        self._fail_streak = 0
         self.save_concurrent_data.start()
 
     def cog_unload(self):
@@ -237,6 +243,9 @@ class Concurrent(commands.Cog):
 
             count = await get_current_player_count()
             if count is not None:
+                if self._fail_streak:
+                    logger.info(f"동접 수집 복구 ({self._fail_streak}회 연속 실패 후)")
+                    self._fail_streak = 0
                 concurrent_data.add_data(datetime.now(timezone.utc), count)
 
                 # 5분마다만 파일에 저장 (I/O 부하 감소)
@@ -244,7 +253,11 @@ class Concurrent(commands.Cog):
                 if self.save_concurrent_data.current_loop % 5 == 4:
                     concurrent_data.save_to_file()
             else:
-                logger.warning("동시접속자 수를 가져올 수 없어 수집을 건너뜁니다.")
+                self._fail_streak += 1
+                if self._fail_streak == FAIL_ALERT_THRESHOLD:
+                    logger.error(f"동접 수집 {self._fail_streak}회 연속 실패")
+                else:
+                    logger.warning(f"동시접속자 수를 가져올 수 없어 수집을 건너뜁니다. ({self._fail_streak}회 연속)")
         except Exception as e:
             logger.error(f"동접 데이터 수집 중 오류 발생: {e}", exc_info=True)
 

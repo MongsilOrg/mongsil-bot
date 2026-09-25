@@ -147,7 +147,8 @@ async def get_or_create_webhook(channel: discord.TextChannel) -> Optional[discor
         _webhook_cache.pop(channel_id, None)
         _webhook_cache_times.pop(channel_id, None)
         return None
-    except Exception:
+    except discord.HTTPException as e:
+        logger.warning(f"웹훅 준비 실패 (채널 {channel_id}): {e}")
         return None
 
 async def process_emoji_zoom(message: discord.Message) -> None:
@@ -213,9 +214,11 @@ async def process_emoji_zoom(message: discord.Message) -> None:
             return
         try:
             await send_zoom(webhook)
-        except Exception:
+        except discord.HTTPException as e:
+            logger.warning(f"확대 이모지 재전송 실패 (채널 {message.channel.id}): {e}")
             return
-    except Exception:
+    except discord.HTTPException as e:
+        logger.warning(f"확대 이모지 전송 실패 (채널 {message.channel.id}): {e}")
         return
 
     try:

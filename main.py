@@ -7,49 +7,29 @@ import os
 import sentry_sdk
 
 from utils.config import config  # import 시점에 load_dotenv()가 실행된다
-from utils.errors import redact_secrets
+from utils.errors import is_transient, redact_secrets
 from utils.logging_config import setup_logging, get_logger
 from utils.emoji_zoom import process_emoji_zoom, cleanup_emoji_zoom_cache
 
 # 장애 추적. config import로 .env가 로드된 뒤여야 DSN이 잡힌다.
 # DSN이 비어 있으면 transport가 없어 어디로도 전송되지 않는다.
-_NOISE_SUBSTRINGS = (
-    "찾을 수 없습니다",
-    "Connection timeout",
-    "Cannot connect to host",
-    "Temporary failure in name resolution",
-    "네트워크 오류",
-)
-_NOISE_EXC_NAMES = (
-    "TimeoutError", "ConnectTimeoutError", "ReadTimeout", "ConnectionError",
-    "ClientConnectorError", "ClientOSError", "ServerDisconnectedError",
-    "WSServerHandshakeError", "ConnectionClosed", "ConnectionResetError",
-)
+_RECONNECT_LOGGERS = ("discord.client", "discord.gateway")
 
 
 def _sentry_before_send(event, hint):
-    """예상된 사용자 에러와 일시적 네트워크 에러는 Sentry로 보내지 않는다.
+    """일시적 네트워크 에러와 discord.py 재연결 노이즈는 Sentry로 보내지 않는다.
 
-    exc_info 뿐 아니라 LoggingIntegration이 잡는 logger.error 문자열도 검사한다.
-    BotError는 예외로 전파되지 않고 문자열로만 로깅되므로 exc_info가 없다.
+    판정은 예외 클래스와 로거 이름으로만 한다. 메시지 문구로 거르면
+    같은 문구를 쓰는 설정 오류까지 함께 사라진다.
     """
-    # 검사 대상 텍스트 수집: 예외 메시지 + 로그 메시지
-    texts = []
     exc_info = hint.get("exc_info")
-    if exc_info:
-        name = getattr(exc_info[0], "__name__", "")
-        if name in _NOISE_EXC_NAMES:
-            return None
-        texts.append(str(exc_info[1]))
+    if exc_info and is_transient(exc_info[1]):
+        return None
 
     logentry = event.get("logentry") or {}
-    for candidate in (logentry.get("message"), logentry.get("formatted"), event.get("message")):
-        if candidate:
-            texts.append(str(candidate))
-
-    blob = " ".join(texts)
-    for _t in _NOISE_SUBSTRINGS:
-        if _t in blob:
+    if event.get("logger") in _RECONNECT_LOGGERS:
+        msg = logentry.get("message") or event.get("message") or ""
+        if str(msg).startswith("Attempting a reconnect"):
             return None
 
     # 통과한 이벤트에도 URL 쿼리 자격증명이 남지 않게 가린다.

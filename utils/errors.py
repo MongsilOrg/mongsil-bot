@@ -19,6 +19,29 @@ def redact_secrets(text) -> str:
     """로그, 에러 메시지에 실릴 문자열에서 URL 쿼리 자격증명을 가린다."""
     return _SECRET_QS.sub(r"\1=****", str(text))
 
+
+TRANSIENT_EXC_NAMES = frozenset((
+    "TimeoutError", "ConnectTimeoutError", "ReadTimeout", "ConnectionError",
+    "ServerTimeoutError", "ConnectionTimeoutError", "SocketTimeoutError",
+    "ClientConnectorError", "ClientConnectorDNSError", "ClientConnectionResetError",
+    "ClientOSError", "ServerDisconnectedError",
+    "WSServerHandshakeError", "ConnectionClosed", "ConnectionResetError",
+))
+
+
+def is_transient(exc: Optional[BaseException]) -> bool:
+    """예외나 그 원인 체인에 일시적 네트워크, 타임아웃 예외가 있는지 본다.
+
+    from None으로 감춘 원인도 __context__에 남아 있어 함께 검사한다.
+    """
+    for _ in range(5):
+        if exc is None:
+            return False
+        if type(exc).__name__ in TRANSIENT_EXC_NAMES:
+            return True
+        exc = exc.__cause__ or exc.__context__
+    return False
+
 class BotError(Exception):
     """봇 관련 기본 예외 클래스"""
     def __init__(self, message: str, user_message: Optional[str] = None):
@@ -57,10 +80,12 @@ async def _send_error(interaction: discord.Interaction, error_text: str):
             # 로딩 메시지를 에러로 교체 시도, 실패 시 followup
             try:
                 await interaction.edit_original_response(view=layout, embeds=[], attachments=[])
-            except Exception:
+            except discord.HTTPException:
                 await interaction.followup.send(view=layout, ephemeral=True)
-    except Exception:
-        pass
+    except discord.NotFound:
+        logger.debug("에러 응답 전송 생략: 만료된 인터랙션")
+    except discord.HTTPException as e:
+        logger.warning(f"에러 응답 전송 실패: {e}")
 
 
 def handle_errors(
@@ -77,7 +102,7 @@ def handle_errors(
                 if log_error:
                     # 오타 조회, 기록 없음 같은 예상된 유저 조건은 WARNING으로 남긴다.
                     # Sentry는 ERROR 이상만 수집하므로 노이즈가 되지 않는다.
-                    if isinstance(e, (NotFoundError, ValidationError)):
+                    if isinstance(e, (NotFoundError, ValidationError)) or is_transient(e):
                         logger.warning(f"BotError in {func.__name__}: {e.message}")
                     else:
                         logger.error(f"BotError in {func.__name__}: {e.message}")
